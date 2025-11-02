@@ -35,17 +35,15 @@ def lifting_index_filter(
 
 
 def filter_mcs_candidates(
-    clusters, convective_plumes, min_area_km2, min_nr_plumes, grid_cell_area_km2
-):
+    clusters, convective_plumes, min_size_threshold, min_nr_plumes):
     """
     Filter clusters to identify MCS candidates based on area and number of convective plumes.
 
     Parameters:
     - clusters: 2D array of cluster labels.
     - convective_plumes: 2D array of convective plume labels.
-    - min_area_km2: Minimum area threshold for MCS candidate (in km²).
+    - min_size_threshold: Minimum size threshold for clusters (number of grid cells).
     - min_nr_plumes: Minimum number of convective plumes required for MCS candidate.
-    - grid_cell_area_km2: Area of a single grid cell (in km²).
 
     Returns:
     - mcs_candidate_labels: List of cluster labels that meet the MCS criteria.
@@ -56,11 +54,10 @@ def filter_mcs_candidates(
 
     for label_value in cluster_labels:
         cluster_mask = clusters == label_value
-        area_km2 = np.sum(cluster_mask) * grid_cell_area_km2
         plumes_in_cluster = np.unique(convective_plumes[cluster_mask])
         num_plumes = len(plumes_in_cluster[plumes_in_cluster != 0])
 
-        if area_km2 >= min_area_km2 and num_plumes >= min_nr_plumes:
+        if np.sum(cluster_mask)  >= min_size_threshold and num_plumes >= min_nr_plumes:
             mcs_candidate_labels.append(label_value)
 
     return mcs_candidate_labels

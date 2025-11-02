@@ -87,14 +87,12 @@ def detect_mcs_in_file(
         max_passes=10,
     )
 
-    # Step 4: Filter MCS candidates based on number of convective plumes and area and lifting index
-    grid_cell_area_km2 = grid_spacing_km**2
+    # Step 4: Filter MCS candidates based on number of convective plumes, size and lifting index
     mcs_candidate_labels = filter_mcs_candidates(
         expanded_labels,
         core_labels,
         min_size_threshold,
-        min_nr_plumes,
-        grid_cell_area_km2,
+        min_nr_plumes
     )
 
     # Create final labeled regions for MCS candidates
