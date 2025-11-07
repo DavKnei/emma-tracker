@@ -8,7 +8,6 @@ file_suffix: ".nc_test"
 detection_output_path: "./tests/Test/output/detection"
 tracking_output_dir: "./tests/Test/output/tracking"
 
-grid_size_km: 4.0
 precip_var_name: "pr"
 liting_index_var_name: "li"
 lat_name: "lat"
@@ -29,8 +28,7 @@ lifting_index_percentage_threshold: 0.2
 
 # Tracking parameters
 main_lifetime_thresh: 4
-main_area_thresh: 2000
-grid_cell_area_km2: 16
+main_area_thresh: 25000
 nmaxmerge: 5
 
 # Other parameters
