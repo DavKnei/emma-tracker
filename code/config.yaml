@@ -8,21 +8,20 @@ file_suffix: ".nc"
 detection_output_path: "."
 tracking_output_dir: "."
 
-grid_size_km: 11.0
 precip_var_name: "precipitation"
 liting_index_var_name: "LI"
 lat_name: "lat"
 lon_name: "lon"
-data_source: "IMERG precipitation and ERA5 Lifting Index"
+data_source: "IMERG precipitation and ERA5 Lifted Index"
 
 # Years and Months to process
 # empty list uses all available data in the specified directory
-years: [2020]
-months: [5]
+years: [2017, 2018, 2019]
+months: [5, 6, 7, 8, 9]
 
 # Detection parameter
 min_size_threshold: 10  # min number of grid cells for an object to be detected
-heavy_precip_threshold: 10.0  # mm/h
+heavy_precip_threshold: 6.82  # mm/h
 moderate_precip_threshold: 1.0
 min_nr_plumes: 1  # number of heavy precipitation plums
 lifting_index_percentage_threshold: 0.2  # mm/h
@@ -35,6 +34,6 @@ nmaxmerge: 5  # maximum number of objects to merge in a single timestep
 
 # Other parameter
 use_lifting_index: True
-detection: False
-use_multiprocessing: False
-number_of_cores: 32
+detection: True
+use_multiprocessing: True
+number_of_cores: 30

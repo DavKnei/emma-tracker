@@ -36,8 +36,7 @@ def process_file(
     moderate_precip_threshold,
     min_size_threshold,
     min_nr_plumes,
-    lifting_index_percentage,
-    grid_spacing_km,
+    lifting_index_percentage
 ):
     """
     Wrapper function to run MCS detection for a single file.
@@ -54,8 +53,7 @@ def process_file(
         moderate_precip_threshold,
         min_size_threshold,
         min_nr_plumes,
-        lifting_index_percentage,
-        grid_spacing_km,
+        lifting_index_percentage
     )
     return result
 
@@ -95,7 +93,6 @@ def main():
     file_suffix = config["file_suffix"]
     detection_output_path = config["detection_output_path"]
     tracking_output_dir = config["tracking_output_dir"]
-    grid_spacing_km = config["grid_size_km"]
     precip_data_var = config["precip_var_name"]
     lat_name = config["lat_name"]
     lon_name = config["lon_name"]
@@ -227,8 +224,7 @@ def main():
                             moderate_precip_threshold,
                             min_size_threshold,
                             min_nr_plumes,
-                            lifting_index_percentage,
-                            grid_spacing_km,
+                            lifting_index_percentage
                         )
                         for precip_file, li_file in zip(
                             precip_file_list_year, li_files_year
@@ -255,8 +251,7 @@ def main():
                         moderate_precip_threshold,
                         min_size_threshold,
                         min_nr_plumes,
-                        lifting_index_percentage,
-                        grid_spacing_km,
+                        lifting_index_percentage
                     )
                     save_detection_result(
                         detection_result, detection_output_path, data_source

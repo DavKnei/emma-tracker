@@ -26,7 +26,6 @@ def detect_mcs_in_file(
     min_size_threshold,
     min_nr_plumes,
     lifting_index_percentage,
-    grid_spacing_km,
     time_index=0,
 ):
     """
@@ -42,7 +41,6 @@ def detect_mcs_in_file(
     - min_size_threshold: Minimum size threshold for clusters (number of grid cells).
     - min_nr_plumes: Minimum number of convective plumes required for MCS candidate.
     - lifting_index_percentage: Percentage of Area that needs to fullfil the lifting_index criteria.
-    - grid_spacing_km: Approximate grid spacing in kilometers.
     - time_index: Index of the time step to process.
 
     Returns:
