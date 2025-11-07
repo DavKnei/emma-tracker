@@ -3,7 +3,7 @@
 
 # Data
 precip_data_directory: "/reloclim/dkn/data/IMERG"
-lifting_index_data_directory: "/reloclim/dkn/data/ERA5/lifting_index"
+lifted_index_data_directory: "/reloclim/dkn/data/ERA5/lifted_index"
 file_suffix: ".nc"
 detection_output_path: "."
 tracking_output_dir: "."
@@ -24,7 +24,7 @@ min_size_threshold: 10  # min number of grid cells for an object to be detected
 heavy_precip_threshold: 6.82  # mm/h
 moderate_precip_threshold: 1.0
 min_nr_plumes: 1  # number of heavy precipitation plums
-lifting_index_percentage_threshold: 0.2  # mm/h
+lifted_index_percentage_threshold: 0.2  # mm/h
 
 # Tracking parameter
 main_lifetime_thresh: 4  # min number of hours for an MCS in the mature state
@@ -33,7 +33,7 @@ grid_cell_area_km2: 121  # area in km2
 nmaxmerge: 5  # maximum number of objects to merge in a single timestep
 
 # Other parameter
-use_lifting_index: True
+use_lifted_index: True
 detection: True
 use_multiprocessing: True
 number_of_cores: 30

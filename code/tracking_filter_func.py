@@ -115,10 +115,10 @@ def filter_relevant_systems(
 
 
 def apply_li_filter(
-    mcs_ids_list, lifting_index_regions_list, time_list, main_lifetime_thresh
+    mcs_ids_list, lifted_index_regions_list, time_list, main_lifetime_thresh
 ):
     """
-    Post‑filter MCS tracks by lifting_index_regions (0/1).
+    Post‑filter MCS tracks by lifted_index_regions (0/1).
     A track passes if any LI==1 occurs within two hours before or at its start,
     or if LI==1 first appears later and the remaining track length ≥ main_lifetime_thresh.
 
@@ -145,7 +145,7 @@ def apply_li_filter(
         found = False
         for ti in window:
             mask = mcs_ids_list[ti] == tid
-            if mask.any() and (lifting_index_regions_list[ti][mask] == 1).any():
+            if mask.any() and (lifted_index_regions_list[ti][mask] == 1).any():
                 onset = t0
                 found = True
                 break
@@ -154,7 +154,7 @@ def apply_li_filter(
         if not found:
             for ti in times_present:
                 mask = mcs_ids_list[ti] == tid
-                if mask.any() and (lifting_index_regions_list[ti][mask] == 1).any():
+                if mask.any() and (lifted_index_regions_list[ti][mask] == 1).any():
                     onset = ti
                     found = True
                     break

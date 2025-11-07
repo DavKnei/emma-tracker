@@ -3,8 +3,8 @@
 tracking_main.py
 
 Main routine for tracking Mesoscale Convective Systems (MCSs) across multiple timesteps.
-Tracks are assigned via spatial overlap, and a robust filtering based on a lifting index (LI)
-detection (provided in the detection results as 'lifting_index_regions') is applied.
+Tracks are assigned via spatial overlap, and a robust filtering based on a lifted index (LI)
+detection (provided in the detection results as 'lifted_index_regions') is applied.
 
 The script returns per-timestep tracking arrays, main track IDs, lifetime arrays,
 merging and splitting events, and tracking center positions.
@@ -51,7 +51,7 @@ def track_mcs(
     Args:
         detection_results (List[dict]): A list where each dictionary represents one timestep and contains:
             - "final_labeled_regions" (np.ndarray): 2D array of detected cluster labels.
-            - "lifting_index_regions" (np.ndarray): 2D binary array where 1 indicates a cluster met the LI criterion. Optional, used if 'use_li_filter' is True.
+            - "lifted_index_regions" (np.ndarray): 2D binary array where 1 indicates a cluster met the LI criterion. Optional, used if 'use_li_filter' is True.
             - "center_points" (dict): Mapping of cluster label to its (lat, lon) center. Optional.
             - "time" (datetime.datetime): Timestamp for the data.
             - "lat2d" (np.ndarray): 2D array of latitudes.
@@ -61,7 +61,7 @@ def track_mcs(
         main_lifetime_thresh (int): The minimum number of consecutive hours a track must simultaneously meet the area and LI criteria to be considered a main MCS.
         main_area_thresh (float): The minimum area (in km²) a track must have to be considered in its mature phase.
         nmaxmerge (int): The maximum number of parent systems to consider in a single merging event.
-        use_li_filter (bool): If True, enables the convective environment check based on the "lifting_index_regions" data.
+        use_li_filter (bool): If True, enables the convective environment check based on the "lifted_index_regions" data.
 
     Returns:
         Tuple: A tuple containing the following organized results:
@@ -100,7 +100,7 @@ def track_mcs(
     convective_history = defaultdict(dict)
 
     # Determine if LI filtering is available (only need to check detection_results[0])
-    use_li = use_li_filter and ("lifting_index_regions" in detection_results[0])
+    use_li = use_li_filter and ("lifted_index_regions" in detection_results[0])
 
     grid_area_map_km2 = calculate_grid_area_map(detection_results[0])
 
@@ -113,7 +113,7 @@ def track_mcs(
 
         # Get LI regions if available.
         if use_li:
-            li_regions = detection_result["lifting_index_regions"]
+            li_regions = detection_result["lifted_index_regions"]
         else:
             li_regions = None
 
@@ -292,7 +292,7 @@ def track_mcs(
                             is_convective = np.all(li_regions[current_mask] == 1)
                             robust_flag_dict[finalid] = is_convective
                         else:
-                            # set all to true because we dont use the lifting index criteria
+                            # set all to true because we dont use the lifted index criteria
                             robust_flag_dict[finalid] = True
                         logger.info(
                             f"Track splitting at {current_time} for parent track {old_id}. "

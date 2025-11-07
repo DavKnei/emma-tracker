@@ -3,7 +3,7 @@
 
 # Data directories
 precip_data_directory: "./tests/Test/data/"
-lifting_index_data_directory: "./tests/Test/data/"
+lifted_index_data_directory: "./tests/Test/data/"
 file_suffix: ".nc_test"
 detection_output_path: "./tests/Test/output/detection"
 tracking_output_dir: "./tests/Test/output/tracking"
@@ -24,7 +24,7 @@ min_size_threshold: 10
 heavy_precip_threshold: 10.0
 moderate_precip_threshold: 1.0
 min_nr_plumes: 1
-lifting_index_percentage_threshold: 0.2
+lifted_index_percentage_threshold: 0.2
 
 # Tracking parameters
 main_lifetime_thresh: 4
@@ -32,7 +32,7 @@ main_area_thresh: 25000
 nmaxmerge: 5
 
 # Other parameters
-use_lifting_index:  True
+use_lifted_index:  True
 detection: True
 use_multiprocessing: False
 number_of_cores: 24

@@ -28,15 +28,15 @@ sys.excepthook = handle_exception
 def process_file(
     precip_file_path,
     precip_data_var,
-    lifting_index_file_path,
-    lifting_index_data_var,
+    lifted_index_file_path,
+    lifted_index_data_var,
     lat_name,
     lon_name,
     heavy_precip_threshold,
     moderate_precip_threshold,
     min_size_threshold,
     min_nr_plumes,
-    lifting_index_percentage
+    lifted_index_percentage
 ):
     """
     Wrapper function to run MCS detection for a single file.
@@ -45,15 +45,15 @@ def process_file(
     result = detect_mcs_in_file(
         precip_file_path,
         precip_data_var,
-        lifting_index_file_path,
-        lifting_index_data_var,
+        lifted_index_file_path,
+        lifted_index_data_var,
         lat_name,
         lon_name,
         heavy_precip_threshold,
         moderate_precip_threshold,
         min_size_threshold,
         min_nr_plumes,
-        lifting_index_percentage
+        lifted_index_percentage
     )
     return result
 
@@ -107,7 +107,7 @@ def main():
     heavy_precip_threshold = config["heavy_precip_threshold"]
     moderate_precip_threshold = config["moderate_precip_threshold"]
     min_nr_plumes = config["min_nr_plumes"]
-    lifting_index_percentage = config["lifting_index_percentage_threshold"]
+    lifted_index_percentage = config["lifted_index_percentage_threshold"]
 
     # Tracking parameters
     main_lifetime_thresh = config["main_lifetime_thresh"]
@@ -118,7 +118,7 @@ def main():
     USE_MULTIPROCESSING = config["use_multiprocessing"]
     NUMBER_OF_CORES = config["number_of_cores"]
     DO_DETECTION = config["detection"]
-    USE_LIFTING_INDEX = config["use_lifting_index"]
+    USE_LIFTED_INDEX = config["use_lifted_index"]
 
     # Setup logging and create output directories
     os.makedirs(detection_output_path, exist_ok=True)
@@ -157,28 +157,28 @@ def main():
     # Now, group the filtered list by year
     files_by_year = group_files_by_year(filtered_precip_files)
 
-    if USE_LIFTING_INDEX:
-        lifting_index_data_dir = config["lifting_index_data_directory"]
-        lifting_index_data_var = config["liting_index_var_name"]
+    if USE_LIFTED_INDEX:
+        lifted_index_data_dir = config["lifted_index_data_directory"]
+        lifted_index_data_var = config["liting_index_var_name"]
 
         all_li_files = sorted(
             glob.glob(
-                os.path.join(lifting_index_data_dir, "**", f"*{file_suffix}"),
+                os.path.join(lifted_index_data_dir, "**", f"*{file_suffix}"),
                 recursive=True,
             )
         )
         if not all_li_files:
-            raise FileNotFoundError("Lifting index data directory is empty. Exiting.")
+            raise FileNotFoundError("lifted index data directory is empty. Exiting.")
         logger.info(
-            f"Found {len(all_li_files)} total lifting index files in source directory."
+            f"Found {len(all_li_files)} total lifted index files in source directory."
         )
 
-        # Apply the same filter to the lifting index files
+        # Apply the same filter to the lifted index files
         filtered_li_files = filter_files_by_date(
             all_li_files, years_to_process, months_to_process
         )
         logger.info(
-            f"After filtering, {len(filtered_li_files)} lifting index files remain."
+            f"After filtering, {len(filtered_li_files)} lifted index files remain."
         )
 
         li_files_by_year = group_files_by_year(filtered_li_files)
@@ -190,7 +190,7 @@ def main():
         logger.info(f"--- Starting processing for year: {year} ---")
         precip_file_list_year = files_by_year[year]
 
-        if USE_LIFTING_INDEX:
+        if USE_LIFTED_INDEX:
             li_files_year = li_files_by_year.get(year, [])
             if len(precip_file_list_year) != len(li_files_year):
                 logger.warning(
@@ -199,7 +199,7 @@ def main():
                 continue
         else:
             li_files_year = [None] * len(precip_file_list_year)
-            lifting_index_data_var = None
+            lifted_index_data_var = None
 
         # --- 3a. DETECTION PHASE ---
         if DO_DETECTION:
@@ -216,14 +216,14 @@ def main():
                             precip_file,
                             precip_data_var,
                             li_file,
-                            lifting_index_data_var,
+                            lifted_index_data_var,
                             lat_name,
                             lon_name,
                             heavy_precip_threshold,
                             moderate_precip_threshold,
                             min_size_threshold,
                             min_nr_plumes,
-                            lifting_index_percentage
+                            lifted_index_percentage
                         )
                         for precip_file, li_file in zip(
                             precip_file_list_year, li_files_year
@@ -243,14 +243,14 @@ def main():
                         precip_file,
                         precip_data_var,
                         li_file,
-                        lifting_index_data_var,
+                        lifted_index_data_var,
                         lat_name,
                         lon_name,
                         heavy_precip_threshold,
                         moderate_precip_threshold,
                         min_size_threshold,
                         min_nr_plumes,
-                        lifting_index_percentage
+                        lifted_index_percentage
                     )
                     save_detection_result(
                         detection_result, detection_output_path, data_source
@@ -270,7 +270,7 @@ def main():
         logger.info(f"Loading all detection files for year {year}...")
         year_detection_dir = os.path.join(detection_output_path, str(year))
         detection_results = load_individual_detection_files(
-            year_detection_dir, USE_LIFTING_INDEX
+            year_detection_dir, USE_LIFTED_INDEX
         )
 
         # --- Apply month filter if specified, especially for 'detection: False' runs ---
@@ -311,7 +311,7 @@ def main():
             main_lifetime_thresh,
             main_area_thresh,
             nmaxmerge,
-            use_li_filter=USE_LIFTING_INDEX,
+            use_li_filter=USE_LIFTED_INDEX,
         )
         logger.info(f"Tracking for year {year} finished.")
         print(f"Tracking for year {year} finished.")

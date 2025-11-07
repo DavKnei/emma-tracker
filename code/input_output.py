@@ -164,9 +164,9 @@ def convert_precip_units(prec, target_unit="mm/h"):
     return new_prec
 
 
-def convert_lifting_index_units(li, target_unit="K"):
+def convert_lifted_index_units(li, target_unit="K"):
     """
-    Convert the lifting index DataArray to the target unit.
+    Convert the lifted index DataArray to the target unit.
 
     Recognized unit conversions:
       - degree Celcius to K
@@ -186,7 +186,7 @@ def convert_lifting_index_units(li, target_unit="K"):
         constant = 273.15
     else:
         print(
-            f"Warning: Unrecognized lifting_index units '{orig_units}'. No conversion applied."
+            f"Warning: Unrecognized lifted_index units '{orig_units}'. No conversion applied."
         )
         factor = 1.0
 
@@ -237,9 +237,9 @@ def load_precipitation_data(file_path, data_var, lat_name, lon_name, time_index=
     return ds, lat2d, lon2d, lat, lon, prec_converted
 
 
-def load_lifting_index_data(file_path, data_var, lat_name, lon_name, time_index=0):
+def load_lifted_index_data(file_path, data_var, lat_name, lon_name, time_index=0):
     """
-    Load the dataset and select the specified time step, scaling the lifting_index data
+    Load the dataset and select the specified time step, scaling the lifted_index data
     variable to units of K for consistency with the detection threshold.
 
     Parameters:
@@ -275,8 +275,8 @@ def load_lifting_index_data(file_path, data_var, lat_name, lon_name, time_index=
         lon = lon2d[0, :]
 
     li = ds[str(data_var)]
-    # Convert the lifting index data to K using the separate conversion function.
-    li_converted = convert_lifting_index_units(li, target_unit="K")
+    # Convert the lifted index data to K using the separate conversion function.
+    li_converted = convert_lifted_index_units(li, target_unit="K")
 
     # Remove all non relevant data variables from dataset
     data_vars_list = [data_var for data_var in ds.data_vars]
@@ -303,7 +303,7 @@ def save_detection_result(detection_result, output_dir, data_source):
     Args:
         detection_result (dict):
             A dictionary containing the detection results for one timestep.
-            Must contain: "final_labeled_regions", "lifting_index_regions", "lat", "lon", "time",
+            Must contain: "final_labeled_regions", "lifted_index_regions", "lat", "lon", "time",
             and optionally "center_points".
         output_dir (str):
             The directory where the output NetCDF file will be saved.
@@ -326,8 +326,8 @@ def save_detection_result(detection_result, output_dir, data_source):
     final_labeled_regions = np.expand_dims(
         detection_result["final_labeled_regions"], axis=0
     )
-    lifting_index_regions = np.expand_dims(
-        detection_result["lifting_index_regions"], axis=0
+    lifted_index_regions = np.expand_dims(
+        detection_result["lifted_index_regions"], axis=0
     )
     lat = detection_result["lat"]
     lon = detection_result["lon"]
@@ -338,7 +338,7 @@ def save_detection_result(detection_result, output_dir, data_source):
     ds = xr.Dataset(
         {
             "final_labeled_regions": (["time", "lat", "lon"], final_labeled_regions),
-            "lifting_index_regions": (["time", "lat", "lon"], lifting_index_regions),
+            "lifted_index_regions": (["time", "lat", "lon"], lifted_index_regions),
         },
         coords={
             "time": [time_val],
@@ -381,7 +381,7 @@ def load_individual_detection_files(year_input_dir, use_li_filter):
 
     Args:
         year_input_dir (str): The base directory for a specific year (e.g., /path/to/output/2020).
-        use_li_filter (bool): Flag to determine if lifting_index_regions should be loaded.
+        use_li_filter (bool): Flag to determine if lifted_index_regions should be loaded.
 
     Returns:
         List[dict]: A list of detection_result dictionaries, sorted by time.
@@ -436,16 +436,16 @@ def load_individual_detection_files(year_input_dir, use_li_filter):
                 }
 
                 if use_li_filter:
-                    if "lifting_index_regions" in ds:
-                        detection_result["lifting_index_regions"] = ds[
-                            "lifting_index_regions"
+                    if "lifted_index_regions" in ds:
+                        detection_result["lifted_index_regions"] = ds[
+                            "lifted_index_regions"
                         ].values[0]
                     else:
-                        detection_result["lifting_index_regions"] = np.zeros_like(
+                        detection_result["lifted_index_regions"] = np.zeros_like(
                             final_labeled_regions
                         )
                         print(
-                            f"Warning: 'lifting_index_regions' not found in {filepath}. Using zeros."
+                            f"Warning: 'lifted_index_regions' not found in {filepath}. Using zeros."
                         )
 
                 detection_results.append(detection_result)
