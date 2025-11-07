@@ -260,18 +260,19 @@ def attempt_advection_rescue(
     previous_labeled_regions,
     final_labeled_regions,
     previous_cluster_ids,
-    overlap_map,  # <-- ADDED: Pass in the main overlap map
-    grid_cell_area_km2,
+    overlap_map,
+    grid_area_map_km2,
     overlap_threshold=10,
     search_radius_km=1000,
 ):
     """
-    Attempts to rescue non-overlapping systems by applying an advection correction.
+    Attempts to rescue non-overlapping systems by applying a LOCAL advection correction.
 
-    For each system that has no initial overlap, this function calculates a
-    local displacement vector based on the movement of nearby, successfully
-    tracked systems. It then displaces all systems from the previous timestep
-    by this vector and re-checks for overlaps.
+    This function is a "smart" approximation. For each "lost" cluster, it
+    calculates a local advection vector based on the movement of nearby
+    (within `search_radius_km`) stable systems. It then applies this
+    local vector to the previous-timestep-mask and re-checks for overlap
+    using a fast, pixel-based percentage check.
 
     Args:
         labels_no_overlap (list): A list of labels from the current timestep
@@ -280,7 +281,7 @@ def attempt_advection_rescue(
         final_labeled_regions (np.ndarray): The labeled mask from the current timestep (t).
         previous_cluster_ids (dict): Mapping of {label_t-1: track_id}.
         overlap_map (dict): { new_label (int) : [list of old track IDs (int)] }.
-        grid_cell_area_km2 (float): The area of a single grid cell in km².
+        grid_area_map_km2 (np.ndarray): 2D array of grid cell areas (km²).
         overlap_threshold (float): Minimum percentage overlap required for consideration.
         search_radius_km (int): The radius in km to search for neighboring systems.
 
@@ -290,64 +291,95 @@ def attempt_advection_rescue(
     rescued_overlaps = {}
     if not labels_no_overlap:
         return rescued_overlaps
+
+    # --- 1. PRE-CALCULATE STABLE VECTORS & CENTERS ---
+    # Calculate a single, representative pixel area for distance approximation
+    avg_pixel_area_km2 = np.mean(grid_area_map_km2)
     
-    radius_pixels = search_radius_km / np.sqrt(grid_cell_area_km2)
+    # Calculate squared radius in pixels for faster distance checks
+    radius_pixels_sq = (search_radius_km / np.sqrt(avg_pixel_area_km2))**2
 
     current_centers = {lbl: center_of_mass(final_labeled_regions, final_labeled_regions, lbl) for lbl in np.unique(final_labeled_regions) if lbl != 0}
     previous_centers = {lbl: center_of_mass(previous_labeled_regions, previous_labeled_regions, lbl) for lbl in np.unique(previous_labeled_regions) if lbl != 0}
-    previous_areas = {lbl: np.sum(previous_labeled_regions == lbl) for lbl in previous_centers.keys()}
-   
-    # Find stable neighbors using the provided overlap_map
-    stable_vectors = []
+    previous_areas_pixels = {lbl: np.sum(previous_labeled_regions == lbl) for lbl in previous_centers.keys()}
+
+    # Store all stable vectors and their *new* center coordinates
+    stable_vectors_info = [] # Store as ( (dy, dx), center_new_coords )
     for new_lbl, old_track_ids in overlap_map.items():
-        # A stable one-to-one track is one where a new label maps to exactly one old track ID.
+        # A stable one-to-one track
         if len(old_track_ids) == 1:
             old_track_id = old_track_ids[0]
             # Find the original detection label for this old track ID
             old_lbls = [k for k, v in previous_cluster_ids.items() if v == old_track_id]
+            
             if len(old_lbls) == 1:
                 old_lbl = old_lbls[0]
                 center_old = previous_centers.get(old_lbl)
                 center_new = current_centers.get(new_lbl)
+                
                 if center_old and center_new:
                     dy = center_new[0] - center_old[0]
                     dx = center_new[1] - center_old[1]
-                    stable_vectors.append((dy, dx))
-    
-    if not stable_vectors:
-        return rescued_overlaps # No stable neighbors anywhere on the map, cannot rescue.
+                    stable_vectors_info.append( ((dy, dx), center_new) )
 
-    # Calculate the average environmental flow
-    avg_dy, avg_dx = np.mean(stable_vectors, axis=0)
-    
-    # Now, attempt to rescue each non-overlapping label using this single calculated vector
+    if not stable_vectors_info:
+        return rescued_overlaps # No stable neighbors anywhere, cannot rescue.
+
+    # Calculate the single, global average vector as a fallback
+    global_avg_vector = np.mean([info[0] for info in stable_vectors_info], axis=0)
+
+    # --- 2. LOOP THROUGH EACH "LOST" LABEL AND ATTEMPT RESCUE ---
     for new_lbl in labels_no_overlap:
-        # Displace the *entire* previous mask once
+        center_new = current_centers.get(new_lbl)
+        if not center_new:
+            continue # Should not happen, but good to check
+
+        # Find local stable vectors
+        local_stable_vectors = []
+        for vector, neighbor_center in stable_vectors_info:
+            # Calculate squared pixel distance
+            dist_sq = (center_new[0] - neighbor_center[0])**2 + (center_new[1] - neighbor_center[1])**2
+            if dist_sq <= radius_pixels_sq:
+                local_stable_vectors.append(vector)
+        
+        # Use local average if available, otherwise fall back to global
+        if local_stable_vectors:
+            avg_dy, avg_dx = np.mean(local_stable_vectors, axis=0)
+        else:
+            avg_dy, avg_dx = global_avg_vector
+        
+        # --- 3. APPLY TRANSLATION AND CHECK OVERLAP (Pixel-based) ---
         translated_previous_regions = np.zeros_like(previous_labeled_regions)
         transform_matrix = np.array([[1, 0, -avg_dy], [0, 1, -avg_dx], [0, 0, 1]])
         affine_transform(previous_labeled_regions, transform_matrix, output=translated_previous_regions, order=0, prefilter=False)
 
         current_mask = final_labeled_regions == new_lbl
-        area_new = np.sum(current_mask)
-        
+        area_new_pixels = np.sum(current_mask)
+        if area_new_pixels == 0:
+            continue
+
         overlapping_old_labels = np.unique(translated_previous_regions[current_mask])
         overlapping_old_labels = overlapping_old_labels[overlapping_old_labels != 0]
 
-        
         if overlapping_old_labels.size > 0:
             potential_matches = []
             for old_lbl in overlapping_old_labels:
-                area_old = previous_areas.get(old_lbl, 0)
-                if area_old == 0: continue
+                area_old_pixels = previous_areas_pixels.get(old_lbl, 0)
+                if area_old_pixels == 0: 
+                    continue
 
-                intersection_area = np.sum((current_mask) & (translated_previous_regions == old_lbl))
+                intersection_area_pixels = np.sum((current_mask) & (translated_previous_regions == old_lbl))
 
-                if (intersection_area / min(area_new, area_old)) * 100 >= overlap_threshold:
+                # This is a PIXEL-based overlap percentage, which is a fast approximation
+                overlap_percent = (intersection_area_pixels / min(area_new_pixels, area_old_pixels)) * 100
+                
+                if overlap_percent >= overlap_threshold:
                     if old_lbl in previous_cluster_ids:
                         potential_matches.append(previous_cluster_ids[old_lbl])
 
             if potential_matches:
                 rescued_overlaps[new_lbl] = sorted(list(set(potential_matches)))
+
     return rescued_overlaps
 
 def handle_no_overlap(
