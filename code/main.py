@@ -112,7 +112,6 @@ def main():
     # Tracking parameters
     main_lifetime_thresh = config["main_lifetime_thresh"]
     main_area_thresh = config["main_area_thresh"]
-    grid_cell_area_km2 = config["grid_cell_area_km2"]
     nmaxmerge = config["nmaxmerge"]
 
     # Operational parameters
@@ -311,7 +310,6 @@ def main():
             detection_results,
             main_lifetime_thresh,
             main_area_thresh,
-            grid_cell_area_km2,
             nmaxmerge,
             use_li_filter=USE_LIFTING_INDEX,
         )

@@ -20,7 +20,8 @@ from tracking_helper_func import (
     handle_continuation,
     handle_no_overlap,
     compute_max_consecutive,
-    attempt_advection_rescue
+    attempt_advection_rescue,
+    calculate_grid_area_map
 )
 from tracking_merging import handle_merging
 from tracking_splitting import handle_splitting
@@ -32,7 +33,6 @@ def track_mcs(
     detection_results,
     main_lifetime_thresh,
     main_area_thresh,
-    grid_cell_area_km2,
     nmaxmerge,
     use_li_filter,
 ):
@@ -60,7 +60,6 @@ def track_mcs(
             - "lon" (np.ndarray): 1D array of longitudes.
         main_lifetime_thresh (int): The minimum number of consecutive hours a track must simultaneously meet the area and LI criteria to be considered a main MCS.
         main_area_thresh (float): The minimum area (in km²) a track must have to be considered in its mature phase.
-        grid_cell_area_km2 (float): The area of a single grid cell in km².
         nmaxmerge (int): The maximum number of parent systems to consider in a single merging event.
         use_li_filter (bool): If True, enables the convective environment check based on the "lifting_index_regions" data.
 
@@ -103,6 +102,8 @@ def track_mcs(
     # Determine if LI filtering is available (only need to check detection_results[0])
     use_li = use_li_filter and ("lifting_index_regions" in detection_results[0])
 
+    grid_area_map_km2 = calculate_grid_area_map(detection_results[0])
+
     for idx, detection_result in enumerate(detection_results):
         final_labeled_regions = detection_result["final_labeled_regions"]
         center_points_dict = detection_result.get("center_points", {})
@@ -143,7 +144,7 @@ def track_mcs(
             # First timestep with clusters: assign new track IDs.
             for label in unique_labels:
                 cluster_mask = final_labeled_regions == label
-                area = np.sum(cluster_mask) * grid_cell_area_km2
+                area = np.sum(grid_area_map_km2[cluster_mask])
                 assigned_id, next_cluster_id = assign_new_id(
                     label,
                     cluster_mask,
@@ -186,7 +187,7 @@ def track_mcs(
                     final_labeled_regions,
                     previous_cluster_ids,
                     clean_overlap_map, # Pass the clean map
-                    grid_cell_area_km2,
+                    grid_area_map_km2,
                     overlap_threshold=10,
                 )
              
@@ -212,7 +213,7 @@ def track_mcs(
                         mcs_lifetime=mcs_lifetime,
                         lifetime_dict=lifetime_dict,
                         max_area_dict=max_area_dict,
-                        grid_cell_area_km2=grid_cell_area_km2,
+                        grid_area_map_km2=grid_area_map_km2,
                     )
                     temp_assigned[new_lbl] = chosen_id
                     if use_li:
@@ -233,7 +234,7 @@ def track_mcs(
                         final_labeled_regions=final_labeled_regions,
                         current_time=current_time,
                         max_area_dict=max_area_dict,
-                        grid_cell_area_km2=grid_cell_area_km2,
+                        grid_area_map_km2=grid_area_map_km2,
                         nmaxmerge=nmaxmerge,
                     )
                     mask = final_labeled_regions == new_lbl
@@ -260,7 +261,7 @@ def track_mcs(
                 max_area_dict,
                 mcs_id,
                 mcs_lifetime,
-                grid_cell_area_km2,
+                grid_area_map_km2,
             )
             temp_assigned.update(new_assign_map)
             # Handle splitting events.
@@ -280,7 +281,7 @@ def track_mcs(
                         mcs_lifetime,
                         lifetime_dict,
                         max_area_dict,
-                        grid_cell_area_km2,
+                        grid_area_map_km2,
                         nmaxsplit=nmaxmerge,
                     )
                     for nl, finalid in splitted_map.items():
@@ -335,7 +336,8 @@ def track_mcs(
 
         for tid in unique_ids_in_frame:
             # Calculate area once and store it
-            area = np.sum(mcs_id_array == tid) * grid_cell_area_km2
+            mask = mcs_id_array == tid
+            area = np.sum(grid_area_map_km2[mask])
 
             # Get convective status and store it
             is_convective = convective_history[tid].get(i, False) if use_li else True
