@@ -460,57 +460,67 @@ def load_individual_detection_files(year_input_dir, use_li_filter):
     return detection_results
 
 def save_tracking_result(tracking_data_for_timestep, output_dir, data_source):
-    """
-    Saves a single timestep's tracking results to a compressed, CF-compliant NetCDF file.
+    """Saves a single timestep's tracking results to a compressed, CF-compliant NetCDF file.
 
     The files are organized into 'YYYY/MM/' subdirectories. This function applies
-    zlib compression and integer encoding to minimize storage requirements while
-    maintaining high precision.
+    zlib compression and integer encoding to minimize storage requirements.
 
     Args:
-        tracking_data_for_timestep (dict): Dictionary containing all tracking arrays and metadata:
-            - "robust_mcs_id" (np.ndarray): IDs of robust/mature MCSs (filtered).
+        tracking_data_for_timestep (dict): Dictionary containing tracking arrays:
+            - "robust_mcs_id" (np.ndarray): IDs of mature "in-phase" MCSs.
             - "mcs_id" (np.ndarray): Full lifetime IDs of main MCSs.
-            - "mcs_id_merge_split" (np.ndarray): IDs including full merger/splitting history.
-            - "lifetime" (np.ndarray): Pixel-wise lifetime duration.
+            - "mcs_id_merge_split" (np.ndarray): IDs including merger/splitting history.
             - "time" (datetime-like): Current timestep.
-            - "lat" (np.ndarray): 1D latitude coordinate.
-            - "lon" (np.ndarray): 1D longitude coordinate.
-            - "lat2d" (np.ndarray): 2D latitude grid.
-            - "lon2d" (np.ndarray): 2D longitude grid.
-            - "tracking_centers" (dict): Center points of tracks for t0.
-        output_dir (str): The root directory for saving output files.
-        data_source (str): String describing the source data (e.g., "IMERG + ERA5").
-
-    Returns:
-        None
+            - "lat", "lon", "lat2d", "lon2d": Coordinates.
+            - "tracking_centers" (dict): Center points for t0.
+        output_dir (str): Root directory for saving.
+        data_source (str): Description of source data.
     """
-    # Prepare Metadata and Paths
+    # 1. Prepare Metadata and Paths
     time_val = pd.to_datetime(tracking_data_for_timestep["time"]).round("S")
     year_str = time_val.strftime("%Y")
     month_str = time_val.strftime("%m")
     
-    # Create directory structure: output_dir/YYYY/MM/
     structured_dir = os.path.join(output_dir, year_str, month_str)
     os.makedirs(structured_dir, exist_ok=True)
 
     filename = f"tracking_{time_val.strftime('%Y%m%dT%H')}.nc"
     output_filepath = os.path.join(structured_dir, filename)
 
-    # Extract Data
-    # Expand dims to create (time, lat, lon) structure for xarray
+    # 2. Process Center Points (The New "Better" Solution)
+    # Convert the dict {id: (lat, lon)} into three parallel lists
+    centers_dict = tracking_data_for_timestep.get("tracking_centers", {})
+    
+    if centers_dict:
+        # Sort by ID to ensure parallel arrays are aligned and deterministic
+        sorted_ids = sorted(centers_dict.keys(), key=lambda x: int(x))
+        
+        # Extract data (handle cases where center might be None)
+        active_ids = [int(tid) for tid in sorted_ids]
+        active_lats = [centers_dict[tid][0] if centers_dict[tid][0] is not None else np.nan for tid in sorted_ids]
+        active_lons = [centers_dict[tid][1] if centers_dict[tid][1] is not None else np.nan for tid in sorted_ids]
+    else:
+        active_ids = []
+        active_lats = []
+        active_lons = []
+
+    # 3. Extract Gridded Data
     robust_mcs_id_arr = np.expand_dims(tracking_data_for_timestep["robust_mcs_id"], axis=0)
     mcs_id_arr = np.expand_dims(tracking_data_for_timestep["mcs_id"], axis=0)
     mcs_id_merge_split_arr = np.expand_dims(tracking_data_for_timestep["mcs_id_merge_split"], axis=0)
-    lifetime = np.expand_dims(tracking_data_for_timestep["lifetime"], axis=0)
 
-    # Create Dataset
+    # 4. Create Dataset
     ds = xr.Dataset(
         data_vars={
+            # Gridded Variables
             "robust_mcs_id": (["time", "lat", "lon"], robust_mcs_id_arr),
             "mcs_id": (["time", "lat", "lon"], mcs_id_arr),
             "mcs_id_merge_split": (["time", "lat", "lon"], mcs_id_merge_split_arr),
-            "lifetime": (["time", "lat", "lon"], lifetime),
+            
+            # New Tabular Variables (The replacement for JSON)
+            "active_track_id": (["tracks"], active_ids),
+            "active_track_lat": (["tracks"], active_lats),
+            "active_track_lon": (["tracks"], active_lons),
         },
         coords={
             "time": [time_val],
@@ -523,7 +533,7 @@ def save_tracking_result(tracking_data_for_timestep, output_dir, data_source):
     ds["latitude"] = (("lat", "lon"), tracking_data_for_timestep["lat2d"])
     ds["longitude"] = (("lat", "lon"), tracking_data_for_timestep["lon2d"])
 
-    # Global Attributes
+    # 5. Enhance Metadata
     ds.attrs = {
         "title": "EMMA-Tracker: European Mesoscale Convective System Model Assessment",
         "institution": "Wegener Center for Climate and Global Change, University of Graz",
@@ -535,55 +545,27 @@ def save_tracking_result(tracking_data_for_timestep, output_dir, data_source):
         "project": "EMMA",
     }
 
-    # Coordinate Attributes
-    ds["lat"].attrs = {"standard_name": "latitude", "long_name": "latitude", "units": "degrees_north", "axis": "Y"}
-    ds["lon"].attrs = {"standard_name": "longitude", "long_name": "longitude", "units": "degrees_east", "axis": "X"}
-    ds["time"].attrs = {"standard_name": "time", "long_name": "time", "axis": "T"}
-    ds["latitude"].attrs = {"standard_name": "latitude", "units": "degrees_north"}
-    ds["longitude"].attrs = {"standard_name": "longitude", "units": "degrees_east"}
-
     # Variable Attributes
-    ds["robust_mcs_id"].attrs = {
-        "long_name": "Robust Mature MCS Track IDs",
-        "description": "Track IDs for MCSs during their mature phase (meeting area & instability criteria). filtered subset.",
-        "units": "1"
-    }
-    ds["mcs_id"].attrs = {
-        "long_name": "Main MCS Track IDs",
-        "description": "Full lifecycle Track IDs of identified Main MCSs (includes initiation and decay phases).",
-        "units": "1"
-    }
-    ds["mcs_id_merge_split"].attrs = {
-        "long_name": "Family Tree Track IDs",
-        "description": "Comprehensive Track IDs including Main MCSs and all associated merging/splitting systems.",
-        "units": "1"
-    }
-    ds["lifetime"].attrs = {
-        "long_name": "MCS Lifetime Duration",
-        "description": "Duration (in timesteps) the specific track has existed up to this point.",
-        "units": "hours" # Assuming hourly timesteps
-    }
+    ds["active_track_id"].attrs = {"long_name": "Active Track IDs", "description": "List of Track IDs present in this timestep."}
+    ds["active_track_lat"].attrs = {"long_name": "Active Track Center Latitude", "units": "degrees_north"}
+    ds["active_track_lon"].attrs = {"long_name": "Active Track Center Longitude", "units": "degrees_east"}
 
-    # Attach tracking centers (serialized JSON)
-    centers_serialized = serialize_center_points(tracking_data_for_timestep["tracking_centers"])
-    ds["mcs_id"].attrs["center_points_t0"] = json.dumps(centers_serialized)
-
-    # Define Encoding for Compression
+    # 6. Define Encoding
     encoding_settings = {
-        "zlib": True,
-        "complevel": 4,
-        "shuffle": True,
-        "_FillValue": 0,
-        "dtype": "int32"
+        "zlib": True, "complevel": 4, "shuffle": True, "_FillValue": 0, "dtype": "int32"
     }
-
+    
     encoding = {
         "robust_mcs_id": encoding_settings,
         "mcs_id": encoding_settings,
         "mcs_id_merge_split": encoding_settings,
-        "lifetime": {**encoding_settings, "dtype": "int16"}, # int16 is sufficient for lifetime (max 32k hours)
         "latitude": {"zlib": True, "complevel": 4},
         "longitude": {"zlib": True, "complevel": 4},
+        
+        # Encoding for new variables (Tracks dimension is small, so no compression needed usually, but good practice)
+        "active_track_id": {"dtype": "int32"},
+        "active_track_lat": {"dtype": "float32"},
+        "active_track_lon": {"dtype": "float32"},
     }
 
     ds.to_netcdf(output_filepath, encoding=encoding)
