@@ -1,12 +1,12 @@
 # config.yaml
 
-
 # Data
 precip_data_directory: "/reloclim/dkn/data/IMERG"
-lifted_index_data_directory: "/reloclim/dkn/data/ERA5/lifted_index"
+lifting_index_data_directory: "/reloclim/dkn/data/ERA5/lifting_index"
 file_suffix: ".nc"
-detection_output_path: "."
-tracking_output_dir: "."
+detection_output_path: "/reloclim/dkn/data/EMMA/detection/"
+raw_tracking_output_dir: "/reloclim/dkn/data/'EMMA/tracking_raw/"
+filtered_tracking_output_dir: "/reloclim/dkn/data/'EMMA/tracking/"
 
 precip_var_name: "precipitation"
 liting_index_var_name: "LI"
@@ -16,7 +16,7 @@ data_source: "IMERG precipitation and ERA5 Lifted Index"
 
 # Years and Months to process
 # empty list uses all available data in the specified directory
-years: [2017, 2018, 2019]
+years: []
 months: [5, 6, 7, 8, 9]
 
 # Detection parameter
@@ -31,6 +31,14 @@ main_lifetime_thresh: 4  # min number of hours for an MCS in the mature state
 main_area_thresh: 5000  # min area for a system to be in the mature state
 grid_cell_area_km2: 121  # area in km2
 nmaxmerge: 5  # maximum number of objects to merge in a single timestep
+
+# Post-processing / Filtering
+# This section controls the physics-based filtering logic
+run_postprocessing: True
+postprocessing_filters:
+  lifted_index_threshold: 0.0          # Keep systems with mean LI < 0.0 K
+  track_straightness_threshold: 0.4    # Keep systems with straightness > 0.4
+  max_area_volatility: 120000.0        # Keep systems with max volatility < 1.2e5
 
 # Other parameter
 use_lifted_index: True
