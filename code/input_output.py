@@ -296,135 +296,206 @@ def serialize_center_points(center_points):
 
 
 def save_detection_result(detection_result, output_dir, data_source):
-    """Saves a single timestep's detection results to a dedicated NetCDF file.
-
-    The output filename is generated from the result's timestamp.
-
-    Args:
-        detection_result (dict):
-            A dictionary containing the detection results for one timestep.
-            Must contain: "final_labeled_regions", "lifted_index_regions", "lat", "lon", "time",
-            and optionally "center_points".
-        output_dir (str):
-            The directory where the output NetCDF file will be saved.
-        data_source (str):
-            Name of the original data source for the file's metadata.save_sin
     """
-    # Extract the timestamp and format it for the filename
+    Saves a single timestep's detection results to a compressed, CF-compliant NetCDF file.
+    
+    Optimized for CORDEX/Climate Model grids:
+    - Uses 'y'/'x' dimensions.
+    - Stores center points as parallel variables.
+    - Applies zlib compression.
+    """
+    # 1. Prepare Metadata and Paths
     time_val = pd.to_datetime(detection_result["time"]).round("S")
-
-    # Create the year/month subdirectory structure
     year_str = time_val.strftime("%Y")
     month_str = time_val.strftime("%m")
+    
     structured_dir = os.path.join(output_dir, year_str, month_str)
     os.makedirs(structured_dir, exist_ok=True)
 
     filename = f"detection_{time_val.strftime('%Y%m%dT%H')}.nc"
     output_filepath = os.path.join(structured_dir, filename)
 
-    # Prepare data arrays
-    final_labeled_regions = np.expand_dims(
-        detection_result["final_labeled_regions"], axis=0
-    )
-    lifted_index_regions = np.expand_dims(
-        detection_result["lifted_index_regions"], axis=0
-    )
-    lat = detection_result["lat"]
-    lon = detection_result["lon"]
+    # 2. Process Center Points (Dictionary -> Parallel Arrays)
+    # The tracking algo expects these to be linked by Label ID.
+    center_points = detection_result.get("center_points", {})
+    
+    if center_points:
+        # Sort by label to ensure deterministic order
+        # Labels are usually strings in your dict, so we convert to int for sorting
+        sorted_labels = sorted(center_points.keys(), key=lambda x: int(x))
+        
+        label_ids = [int(lbl) for lbl in sorted_labels]
+        # Handle cases where value might be None
+        label_lats = [center_points[lbl][0] if center_points[lbl] else np.nan for lbl in sorted_labels]
+        label_lons = [center_points[lbl][1] if center_points[lbl] else np.nan for lbl in sorted_labels]
+    else:
+        label_ids = []
+        label_lats = []
+        label_lons = []
 
-    lat2d = detection_result["lat2d"]
-    lon2d = detection_result["lon2d"]
-    # Create an xarray Dataset
+    # 3. Extract Gridded Data (Expand dims for time axis)
+    final_labeled_regions = np.expand_dims(detection_result["final_labeled_regions"], axis=0)
+    lifted_index_regions = np.expand_dims(detection_result["lifted_index_regions"], axis=0)
+
+    # 4. Create Dataset
     ds = xr.Dataset(
-        {
-            "final_labeled_regions": (["time", "lat", "lon"], final_labeled_regions),
-            "lifted_index_regions": (["time", "lat", "lon"], lifted_index_regions),
+        data_vars={
+            # Gridded Masks
+            "final_labeled_regions": (["time", "y", "x"], final_labeled_regions),
+            "lifted_index_regions": (["time", "y", "x"], lifted_index_regions),
+            
+            # Tabular Center Points (Parallel Arrays)
+            "label_id": (["labels"], label_ids),
+            "label_lat": (["labels"], label_lats),
+            "label_lon": (["labels"], label_lons),
+            
+            # CRS Placeholder
+            "crs": ([], 0),
         },
         coords={
             "time": [time_val],
-            "lat": lat,
-            "lon": lon,
-        },
-        attrs={
-            "description": "Detection results of MCSs for a single timestep.",
-            "source": data_source,
+            "y": detection_result["lat"],
+            "x": detection_result["lon"],
         },
     )
 
-    # Add lat/lon as DataArray variables
-    ds["latitude"] = (("lat", "lon"), lat2d)
-    ds["longitude"] = (("lat", "lon"), lon2d)
+    # Add 2D coordinates
+    ds["latitude"] = (("y", "x"), detection_result["lat2d"])
+    ds["longitude"] = (("y", "x"), detection_result["lon2d"])
 
-    # Handle center points if they exist
-    center_points = detection_result.get("center_points", {})
-    center_points_str = serialize_center_points(center_points)
-    center_points_json = json.dumps(center_points_str)
-    ds["final_labeled_regions"].attrs["center_points_t0"] = center_points_json
+    # 5. Enhance Metadata (CF & CORDEX)
+    ds.attrs = {
+        "title": "EMMA-Tracker Detection Output",
+        "institution": "Wegener Center for Climate and Global Change, University of Graz",
+        "source": data_source,
+        "history": f"Created on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "references": "Kneidinger et al. (2025)",
+        "Conventions": "CF-1.8",
+        "project": "EMMA",
+    }
 
-    # Set global attributes
-    ds.attrs["title"] = "MCS Tracking Results"
-    ds.attrs[
-        "institution"
-    ] = "Wegener Center for Global and Climate Change / University of Graz"
-    ds.attrs["source"] = data_source
-    ds.attrs["history"] = f"Created on {datetime.datetime.now()}"
-    ds.attrs["references"] = "David Kneidinger <david.kneidinger@uni-graz.at>"
+    # Coordinate Attributes
+    ds["y"].attrs = {"standard_name": "projection_y_coordinate", "axis": "Y"}
+    ds["x"].attrs = {"standard_name": "projection_x_coordinate", "axis": "X"}
+    ds["time"].attrs = {"standard_name": "time", "axis": "T"}
+    ds["latitude"].attrs = {"standard_name": "latitude", "units": "degrees_north"}
+    ds["longitude"].attrs = {"standard_name": "longitude", "units": "degrees_east"}
 
-    # Save to NetCDF file
-    ds.to_netcdf(output_filepath)
+    # Grid Mapping
+    ds["crs"].attrs = {
+        "grid_mapping_name": "latitude_longitude",
+        "longitude_of_prime_meridian": 0.0,
+        "semi_major_axis": 6378137.0,
+        "inverse_flattening": 298.257223563,
+    }
+
+    # Variable Attributes
+    for var in ["final_labeled_regions", "lifted_index_regions"]:
+        ds[var].attrs["grid_mapping"] = "crs"
+        ds[var].attrs["coordinates"] = "latitude longitude"
+        ds[var].attrs["units"] = "1"
+        ds[var].attrs["cell_methods"] = "time: point"
+
+    ds["final_labeled_regions"].attrs["long_name"] = "Labeled Convective Regions"
+    ds["final_labeled_regions"].attrs["description"] = "Integer labels of detected potential MCS features."
+    
+    ds["lifted_index_regions"].attrs["long_name"] = "Lifted Index Mask"
+    ds["lifted_index_regions"].attrs["description"] = "Binary mask (1=Unstable, 0=Stable) based on Lifted Index threshold."
+
+    ds["label_id"].attrs = {"long_name": "Feature Label IDs", "description": "IDs corresponding to values in final_labeled_regions."}
+
+    # 6. Encoding (Compression)
+    int_encoding = {"zlib": True, "complevel": 4, "shuffle": True, "_FillValue": 0, "dtype": "int32"}
+    float_encoding = {"zlib": True, "complevel": 4, "dtype": "float32"}
+    
+    encoding = {
+        "final_labeled_regions": int_encoding,
+        "lifted_index_regions": int_encoding,
+        "latitude": float_encoding,
+        "longitude": float_encoding,
+        "label_id": {"dtype": "int32"},
+        "label_lat": {"dtype": "float32"},
+        "label_lon": {"dtype": "float32"},
+    }
+
+    ds.to_netcdf(output_filepath, encoding=encoding)
 
 
 def load_individual_detection_files(year_input_dir, use_li_filter):
     """
-    Load a sequence of individual detection result NetCDF files from a directory,
-    searching recursively through its subdirectories (e.g., monthly folders).
-
-    Args:
-        year_input_dir (str): The base directory for a specific year (e.g., /path/to/output/2020).
-        use_li_filter (bool): Flag to determine if lifted_index_regions should be loaded.
-
-    Returns:
-        List[dict]: A list of detection_result dictionaries, sorted by time.
-                    Returns an empty list if no files are found.
+    Load a sequence of detection result NetCDF files.
+    
+    Updated to handle CORDEX-ready format with parallel arrays for center points.
+    Reconstructs the center_points dictionary for the tracking algorithm.
     """
     detection_results = []
-
-    # Create a recursive glob pattern to find files in YYYY/MM/detection/*.nc
-    # The "**" wildcard searches through all subdirectories.
+    
+    # Recursive search for .nc files
     file_pattern = os.path.join(year_input_dir, "**", "detection_*.nc")
     filepaths = sorted(glob.glob(file_pattern, recursive=True))
 
     if not filepaths:
-        # This warning now reflects the pattern being searched
-        print(f"Warning: No detection files found matching pattern {file_pattern}")
+        print(f"Warning: No detection files found matching {file_pattern}")
         return []
 
     for filepath in filepaths:
         try:
             with xr.open_dataset(filepath) as ds:
-                # Reconstruct the detection_result dictionary from the file
+                # 1. Read Basic Metadata & Grids
                 time_val = ds["time"].values[0]
-                final_labeled_regions = ds["final_labeled_regions"].values[0]
-                lat = ds["lat"].values
-                lon = ds["lon"].values
+                
+                # Handle 'y'/'x' or legacy 'lat'/'lon' dimensions transparently
+                lat_dim = 'y' if 'y' in ds.dims else 'lat'
+                lon_dim = 'x' if 'x' in ds.dims else 'lon'
+                
+                lat = ds[lat_dim].values
+                lon = ds[lon_dim].values
                 lat2d = ds["latitude"].values
                 lon2d = ds["longitude"].values
+                
+                final_labeled_regions = ds["final_labeled_regions"].values[0]
 
+                # 2. Reconstruct Center Points Dictionary
+                # Tracking expects: {'1': (lat, lon), '2': (lat, lon)}
                 center_points_dict = {}
-                if "center_points_t0" in ds["final_labeled_regions"].attrs:
-                    center_points_json = ds["final_labeled_regions"].attrs[
-                        "center_points_t0"
-                    ]
+                
+                # Check if we have the new variables (parallel arrays)
+                if "label_id" in ds:
+                    ids = ds["label_id"].values
+                    lats = ds["label_lat"].values
+                    lons = ds["label_lon"].values
+                    
+                    for i, label_id in enumerate(ids):
+                        # Convert numpy types to native Python types for safety
+                        lbl_str = str(int(label_id))
+                        lbl_lat = float(lats[i])
+                        lbl_lon = float(lons[i])
+                        
+                        # Handle NaNs
+                        if np.isnan(lbl_lat) or np.isnan(lbl_lon):
+                            center_points_dict[lbl_str] = None
+                        else:
+                            center_points_dict[lbl_str] = (lbl_lat, lbl_lon)
+                
+                # Fallback for old files (JSON attributes) - useful during transition
+                elif "center_points_t0" in ds.attrs:
                     try:
-                        center_points_intermediate = json.loads(center_points_json)
-                        center_points_dict = (
-                            json.loads(center_points_intermediate)
-                            if isinstance(center_points_intermediate, str)
-                            else center_points_intermediate
-                        )
-                    except json.JSONDecodeError:
+                        import json
+                        center_points_json = ds.attrs["center_points_t0"]
+                        intermediate = json.loads(center_points_json)
+                        center_points_dict = json.loads(intermediate) if isinstance(intermediate, str) else intermediate
+                    except:
+                        center_points_dict = {}
+                elif "center_points_t0" in ds["final_labeled_regions"].attrs: # Legacy location
+                    try:
+                        import json
+                        center_points_json = ds["final_labeled_regions"].attrs["center_points_t0"]
+                        intermediate = json.loads(center_points_json)
+                        center_points_dict = json.loads(intermediate) if isinstance(intermediate, str) else intermediate
+                    except:
                         center_points_dict = {}
 
+                # 3. Assemble Result
                 detection_result = {
                     "final_labeled_regions": final_labeled_regions,
                     "time": time_val,
@@ -437,16 +508,11 @@ def load_individual_detection_files(year_input_dir, use_li_filter):
 
                 if use_li_filter:
                     if "lifted_index_regions" in ds:
-                        detection_result["lifted_index_regions"] = ds[
-                            "lifted_index_regions"
-                        ].values[0]
+                        detection_result["lifted_index_regions"] = ds["lifted_index_regions"].values[0]
                     else:
-                        detection_result["lifted_index_regions"] = np.zeros_like(
-                            final_labeled_regions
-                        )
-                        print(
-                            f"Warning: 'lifted_index_regions' not found in {filepath}. Using zeros."
-                        )
+                        # Fallback if variable is missing
+                        detection_result["lifted_index_regions"] = np.zeros_like(final_labeled_regions)
+                        print(f"Warning: 'lifted_index_regions' missing in {filepath}")
 
                 detection_results.append(detection_result)
 
@@ -454,9 +520,7 @@ def load_individual_detection_files(year_input_dir, use_li_filter):
             print(f"Error loading {filepath}: {e}")
             continue
 
-    # Final sort by time is robust, though sorting by filename often suffices
     detection_results.sort(key=lambda x: x["time"])
-
     return detection_results
 
 def save_tracking_result(tracking_data_for_timestep, output_dir, data_source):
