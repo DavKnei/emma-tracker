@@ -209,9 +209,27 @@ def filter_tracks(df_timesteps, config):
 
 def apply_filter_to_files(raw_files, valid_ids, output_dir):
     """
-    Reads raw NC files, masks out invalid IDs, saves to output_dir.
+    Reads raw NC files, masks out invalid IDs, and saves to output_dir
+    maintaining compression and integer encoding.
     """
     logger.info(f"Writing {len(raw_files)} filtered files to {output_dir}...")
+    
+    # Define encoding to ensure output is compressed and optimized
+    # matches save_tracking_result in input_output.py
+    int_encoding = {"zlib": True, "complevel": 4, "shuffle": True, "_FillValue": 0, "dtype": "int32"}
+    float_encoding = {"zlib": True, "complevel": 4, "dtype": "float32"}
+
+    encoding = {
+        "robust_mcs_id": int_encoding,
+        "mcs_id": int_encoding,
+        "mcs_id_merge_split": int_encoding,
+        "latitude": float_encoding,
+        "longitude": float_encoding,
+        "active_track_id": {"dtype": "int32"},
+        "active_track_lat": float_encoding,
+        "active_track_lon": float_encoding,
+        # Don't forget 'crs' if you added it!
+    }
     
     for f in raw_files:
         try:
@@ -220,7 +238,6 @@ def apply_filter_to_files(raw_files, valid_ids, output_dir):
                 ds.load()
                 
                 # Arrays to mask
-                # We filter all 3 ID variables to ensure consistency
                 id_vars = ['mcs_id', 'robust_mcs_id', 'mcs_id_merge_split']
                 
                 for var in id_vars:
@@ -231,10 +248,17 @@ def apply_filter_to_files(raw_files, valid_ids, output_dir):
                         data[mask_invalid] = 0
                         ds[var].values = data
                 
-                # Save to new location
-                # structure: output_dir/YYYY/MM/filename
-                # We assume raw_files path structure matches output structure needs
-                # But safer to just construct from the time inside the file
+                # Also filter the 'active_track_...' tabular variables
+                # so the list of centers matches the grids
+                if 'active_track_id' in ds:
+                    active_ids = ds['active_track_id'].values
+                    # Keep only those in valid_ids
+                    valid_indices = np.isin(active_ids, list(valid_ids))
+                    
+                    # Subset the active track variables
+                    ds = ds.isel(tracks=valid_indices)
+
+                # Prepare output path
                 time_val = pd.to_datetime(ds.time.values[0])
                 year_str = time_val.strftime("%Y")
                 month_str = time_val.strftime("%m")
@@ -245,9 +269,11 @@ def apply_filter_to_files(raw_files, valid_ids, output_dir):
                 out_name = os.path.basename(f)
                 out_path = os.path.join(out_subdir, out_name)
                 
-                # Add attribute indicating it was filtered
+                # Update attributes
                 ds.attrs['postprocessing_level'] = 'Filtered (LI, Straightness, Volatility)'
-                ds.to_netcdf(out_path)
+                
+                # Save with specific encoding
+                ds.to_netcdf(out_path, encoding=encoding)
                 
         except Exception as e:
             logger.error(f"Failed to filter/save {f}: {e}")
