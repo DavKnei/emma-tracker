@@ -94,7 +94,7 @@ def main():
     file_suffix = config["file_suffix"]
     detection_output_path = config["detection_output_path"]
     raw_tracking_output_dir = config["raw_tracking_output_dir"]  # raw tracking output
-    tracking_output_dir = config["tracking_output_dir"]  # final filtered tracking output
+    tracking_output_dir = config["filtered_tracking_output_dir"]  # final filtered tracking output
     precip_data_var = config["precip_var_name"]
     lat_name = config["lat_name"]
     lon_name = config["lon_name"]
@@ -105,22 +105,22 @@ def main():
     months_to_process = config.get("months", [])
 
     # Detection parameters
-    min_size_threshold = config["min_size_threshold"]
-    heavy_precip_threshold = config["heavy_precip_threshold"]
-    moderate_precip_threshold = config["moderate_precip_threshold"]
-    min_nr_plumes = config["min_nr_plumes"]
-    lifted_index_percentage = config["lifted_index_percentage_threshold"]
+    min_size_threshold = config.get("min_size_threshold", 10)
+    heavy_precip_threshold = config.get("heavy_precip_threshold", 7)
+    moderate_precip_threshold = config.get("moderate_precip_threshold", 1)
+    min_nr_plumes = config.get("min_nr_plumes", 1)
+    lifted_index_percentage = config.get("lifted_index_percentage_threshold", 0.2)
 
     # Tracking parameters
-    main_lifetime_thresh = config["main_lifetime_thresh"]
-    main_area_thresh = config["main_area_thresh"]
-    nmaxmerge = config["nmaxmerge"]
+    main_lifetime_thresh = config.get("main_lifetime_thresh", 4)
+    main_area_thresh = config.get("main_area_thresh", 5000)
+    nmaxmerge = config.get("nmaxmerge", 5)
 
     # Operational parameters
-    USE_MULTIPROCESSING = config["use_multiprocessing", False]
-    NUMBER_OF_CORES = config["number_of_cores", 1]
-    DO_DETECTION = config["detection", True]
-    USE_LIFTED_INDEX = config["use_lifted_index", True]
+    USE_MULTIPROCESSING = config.get("use_multiprocessing", False)
+    NUMBER_OF_CORES = config.get("number_of_cores", 1)
+    DO_DETECTION = config.get("detection", True)
+    USE_LIFTED_INDEX = config.get("use_lifted_index", True)
     RUN_POSTPROCESSING = config.get("run_postprocessing", True)
 
     # Setup logging and create output directories
