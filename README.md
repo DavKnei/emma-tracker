@@ -6,13 +6,13 @@
  
  ## Overview
  
- The **EMMA-Tracker** is a Python package designed to identify and track Mesoscale Convective Systems (MCSs) in gridded precipitation data (e.g., IMERG, CPMs, RCMs). 
+ The **EMMA-Tracker** is a Python software designed to identify and track Mesoscale Convective Systems (MCSs) in gridded precipitation data (e.g., IMERG, CPMs, RCMs). 
  
  Unlike standard threshold-based trackers, EMMA employs a **physics-based post-processing filter** to distinguish self-sustaining, propagating MCSs from synoptic-scale frontal precipitation and stationary orographic convection. This makes it particularly suitable for process-based evaluation of regional climate models.
  
  **Key Features:**
  * **Physics-Aware Filtering:** Removes frontal systems and stationary convection using Lifted Index (LI), Track Straightness, and Area Volatility.
- * **CORDEX-Ready:** Output files are fully CF-compliant and support Rotated Pole grids (native EURO-CORDEX support).
+ * **Rotated Pole-Ready:** Output files are fully CF-compliant and support Rotated Pole grids (native EURO-CORDEX support).
  * **Robust Tracking:** Handles complex merging and splitting events explicitly.
  * **Reproducible:** Every output file embeds the full run configuration in its metadata.
  
@@ -62,7 +62,7 @@
  heavy_precip_threshold: 6.82  # mm/h (e.g., 99th percentile)
  min_size_threshold: 10        # Minimum grid cells
  
- # Post-Processing Filters (The Physics Check)
+ # Post-Processing Filters
  run_postprocessing: True
  postprocessing_filters:
    lifted_index_threshold: 0.0          # Reject systems in stable environments (Mean LI > 0)
@@ -77,7 +77,7 @@
  Each file contains both **Gridded Segmentation Masks** and **Tabular Track Statistics**:
  
  ### Gridded Variables (2D Maps)
- * `robust_mcs_id`: ID mask of MCSs during their mature, "in-phase" stage (Filtered).
+ * `robust_mcs_id`: ID mask of MCSs during their mature, "in-phase" stage.
  * `mcs_id`: Full lifecycle mask of Main MCSs.
  * `mcs_id_merge_split`: Complete family tree mask (includes mergers/splits).
  
