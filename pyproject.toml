@@ -35,6 +35,10 @@ emma-tracker = "emma.main:main"
 [tool.hatch.build.targets.wheel]
 packages = ["emma"]
 
+[project.urls]
+"Homepage" = "https://github.com/DavidKneidinger/emma-tracker"
+"Bug Tracker" = "https://github.com/DavidKneidinger/emma-tracker/issues"
+
 [tool.pytest.ini_options]
 filterwarnings = [
     # Ignore the skimage boolean deprecation (external library issue)
