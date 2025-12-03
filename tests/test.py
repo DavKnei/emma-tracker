@@ -7,12 +7,10 @@ import numpy as np
 from pathlib import Path
 from unittest.mock import patch
 
-# Import project modules
 from emma.main import main
-# Import the data generator
 from tests.create_test_data import create_test_data_scenario
 
-# Paths
+
 TEST_DIR = Path(__file__).parent
 DATA_DIR = TEST_DIR / "data" / "input"
 REF_DIR = TEST_DIR / "reference"
@@ -78,8 +76,7 @@ def test_raw_tracking_consistency(setup_test_environment):
     generated_files = sorted(list((OUTPUT_DIR / "tracking_raw").rglob("*.nc")))
     
     # 2. Look for reference files in 'reference/tracking_raw'
-    # Ensure your reference folder structure matches this!
-    reference_files = sorted(list((REF_DIR / "tracking_raw").rglob("*.nc")))
+    reference_files = sorted(list((REF_DIR / "tracking_raw").rglob("*.nc_test")))
     
     assert len(generated_files) > 0, "Pipeline produced no output files in tracking_raw!"
     
