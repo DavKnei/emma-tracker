@@ -321,15 +321,17 @@ def save_detection_result(detection_result, output_dir, data_source):
     
     if center_points:
         # Sort by label to ensure deterministic order
-        # Labels are usually strings in your dict, so we convert to int for sorting
         sorted_labels = sorted(center_points.keys(), key=lambda x: int(x))
         
-        label_ids = [int(lbl) for lbl in sorted_labels]
+        # Explicitly create numpy array with int32 dtype
+        label_ids = np.array([int(lbl) for lbl in sorted_labels], dtype=np.int32)
+        
         # Handle cases where value might be None
         label_lats = [center_points[lbl][0] if center_points[lbl] else np.nan for lbl in sorted_labels]
         label_lons = [center_points[lbl][1] if center_points[lbl] else np.nan for lbl in sorted_labels]
     else:
-        label_ids = []
+        # Create empty numpy array with int32 dtype
+        label_ids = np.array([], dtype=np.int32)
         label_lats = []
         label_lons = []
 
@@ -598,7 +600,9 @@ def save_tracking_result(tracking_data_for_timestep, output_dir, data_source, co
     if centers_dict:
         # Sort by ID to ensure deterministic order in the file
         sorted_ids = sorted(centers_dict.keys(), key=lambda x: int(x))
-        active_ids = [int(tid) for tid in sorted_ids]
+        
+        # Enforce Integer Type
+        active_ids = np.array([int(tid) for tid in sorted_ids], dtype=np.int32)
         
         for tid in sorted_ids:
             # A. Extract Center Coordinates
@@ -622,9 +626,16 @@ def save_tracking_result(tracking_data_for_timestep, output_dir, data_source, co
                 np.any(mask[:, xmax])
             )
             active_boundary_flags.append(int(touches))
+            
+        # Enforce Byte/Integer Type for flags
+        active_boundary_flags = np.array(active_boundary_flags, dtype=np.int8)
+
     else:
-        # Handle empty timesteps gracefully
-        active_ids, active_lats, active_lons, active_boundary_flags = [], [], [], []
+        # Handle empty timesteps gracefully with explicit types
+        active_ids = np.array([], dtype=np.int32)
+        active_lats = []
+        active_lons = []
+        active_boundary_flags = np.array([], dtype=np.int8)
 
     # --- 3. PREPARE GRIDDED DATA ---
     # Expand dimensions to add 'time' axis (standard for NetCDF tools)
