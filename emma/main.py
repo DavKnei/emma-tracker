@@ -79,6 +79,7 @@ def main():
         a. Run MCS detection for every timestep, saving results to hourly files.
         b. Load the year's detection results back into memory.
         c. Run the tracking algorithm on the full year's data.
+        d. Apply the postprocessing filter to the raw tracking data.
         d. Save the final tracking results to hourly files.
     This yearly batch approach ensures scalability for multi-year datasets.
     """
@@ -124,80 +125,123 @@ def main():
     RUN_TRACKING = config.get("tracking", True)
     RUN_POSTPROCESSING = config.get("postprocessing", True)
 
-    # Setup logging and create output directories
+    # Create output directories
     os.makedirs(detection_output_path, exist_ok=True)
     os.makedirs(raw_tracking_output_dir, exist_ok=True)
 
+    # Track the file mode for each phase.
+    # 'w' = overwrite (start fresh), 'a' = append (add to existing)
+    log_modes = {
+        "detection": "w",
+        "tracking": "w",
+        "postprocessing": "w"
+    }
+
+    # Initialize logging based on the starting phase
     if RUN_DETECTION:
-        # Start with a fresh detection log, overwriting any from a previous run.
-        setup_logging(detection_output_path, filename="detection.log", mode="w")
-        logger.info("Logging initialized for DETECTION phase.")
-    else:
-        # If skipping detection, start directly with a fresh tracking log.
-        setup_logging(raw_tracking_output_dir, filename="tracking.log", mode="w")
-        logger.info("Logging initialized for TRACKING phase.")
+        setup_logging(detection_output_path, filename="detection.log", mode=log_modes["detection"])
+        log_modes["detection"] = "a" 
+    elif RUN_TRACKING:
+        setup_logging(raw_tracking_output_dir, filename="tracking.log", mode=log_modes["tracking"])
+        log_modes["tracking"] = "a"
+    elif RUN_POSTPROCESSING:
+        os.makedirs(tracking_output_dir, exist_ok=True)
+        setup_logging(tracking_output_dir, filename="postprocessing.log", mode=log_modes["postprocessing"])
+        log_modes["postprocessing"] = "a"
 
     # --- 2. FIND, FILTER, AND GROUP INPUT FILES ---
-    # Find all files recursively
-    all_precip_files = sorted(
-        glob.glob(
-            os.path.join(precip_data_dir, "**", f"*{file_suffix}"), recursive=True
-        )
-    )
-    if not all_precip_files:
-        raise FileNotFoundError("Precipitation data directory is empty. Exiting.")
-    logger.info(
-        f"Found {len(all_precip_files)} total precipitation files in source directory."
-    )
+    files_by_year = {}
+    li_files_by_year = {}
 
-    # Apply the date filter
-    filtered_precip_files = filter_files_by_date(
-        all_precip_files, years_to_process, months_to_process
-    )
-    logger.info(
-        f"After filtering by year/month, {len(filtered_precip_files)} files remain for processing."
-    )
-
-    # Now, group the filtered list by year
-    files_by_year = group_files_by_year(filtered_precip_files)
-
-    if RUN_DETECTION and USE_LIFTED_INDEX:
-        lifted_index_data_dir = config["lifted_index_data_directory"]
-        lifted_index_data_var = config["liting_index_var_name"]
-
-        all_li_files = sorted(
+    if RUN_DETECTION:
+        # Find all files recursively
+        all_precip_files = sorted(
             glob.glob(
-                os.path.join(lifted_index_data_dir, "**", f"*{file_suffix}"),
-                recursive=True,
+                os.path.join(precip_data_dir, "**", f"*{file_suffix}"), recursive=True
             )
         )
-        if not all_li_files:
-            raise FileNotFoundError("lifted index data directory is empty. Exiting.")
+        if not all_precip_files:
+            raise FileNotFoundError("Precipitation data directory is empty. Exiting.")
         logger.info(
-            f"Found {len(all_li_files)} total lifted index files in source directory."
+            f"Found {len(all_precip_files)} total precipitation files in source directory."
         )
 
-        # Apply the same filter to the lifted index files
-        filtered_li_files = filter_files_by_date(
-            all_li_files, years_to_process, months_to_process
+        # Apply the date filter
+        filtered_precip_files = filter_files_by_date(
+            all_precip_files, years_to_process, months_to_process
         )
         logger.info(
-            f"After filtering, {len(filtered_li_files)} lifted index files remain."
+            f"After filtering by year/month, {len(filtered_precip_files)} files remain for processing."
         )
 
-        li_files_by_year = group_files_by_year(filtered_li_files)
+        # Now, group the filtered list by year
+        files_by_year = group_files_by_year(filtered_precip_files)
+
+        if USE_LIFTED_INDEX:
+            lifted_index_data_dir = config["lifted_index_data_directory"]
+            lifted_index_data_var = config["liting_index_var_name"]
+
+            all_li_files = sorted(
+                glob.glob(
+                    os.path.join(lifted_index_data_dir, "**", f"*{file_suffix}"),
+                    recursive=True,
+                )
+            )
+            if not all_li_files:
+                raise FileNotFoundError("lifted index data directory is empty. Exiting.")
+            logger.info(
+                f"Found {len(all_li_files)} total lifted index files in source directory."
+            )
+
+            # Apply the same filter to the lifted index files
+            filtered_li_files = filter_files_by_date(
+                all_li_files, years_to_process, months_to_process
+            )
+            logger.info(
+                f"After filtering, {len(filtered_li_files)} lifted index files remain."
+            )
+
+            li_files_by_year = group_files_by_year(filtered_li_files)
+            
+    # Determine the years to iterate over
+    if RUN_DETECTION:
+        years_to_iterate = sorted(files_by_year.keys())
+    else:
+        # If detection is skipped, determine years from config or existing output directories
+        if years_to_process:
+            years_to_iterate = sorted(years_to_process)
+        else:
+            years_to_iterate = []
+            
+            # Check detection output for existing year folders
+            if os.path.exists(detection_output_path):
+                subdirs = [d for d in os.listdir(detection_output_path) if os.path.isdir(os.path.join(detection_output_path, d))]
+                for d in subdirs:
+                    if d.isdigit():
+                        years_to_iterate.append(int(d))
+            
+            # Check tracking output (useful if detection files were deleted to save space)
+            if not years_to_iterate and os.path.exists(raw_tracking_output_dir):
+                subdirs = [d for d in os.listdir(raw_tracking_output_dir) if os.path.isdir(os.path.join(raw_tracking_output_dir, d))]
+                for d in subdirs:
+                    if d.isdigit():
+                        years_to_iterate.append(int(d))
+
+            years_to_iterate = sorted(list(set(years_to_iterate)))
+            
+        if not years_to_iterate:
+             logger.warning("Detection is off and no years specified in config or found in output directories. Nothing to do.")
 
     # --- 3. MAIN YEARLY PROCESSING LOOP ---
-    logging_switched_to_tracking = False 
-    logging_switched_to_postprocessing = False
-
-    for year in sorted(files_by_year.keys()):
+    for year in years_to_iterate:
         logger.info(f"--- Starting processing for year: {year} ---")
-        precip_file_list_year = files_by_year[year]
+        
+        # Retrieve files for the current year (empty if detection is skipped)
+        precip_file_list_year = files_by_year.get(year, [])
 
         if USE_LIFTED_INDEX:
             li_files_year = li_files_by_year.get(year, [])
-            if len(precip_file_list_year) != len(li_files_year):
+            if RUN_DETECTION and len(precip_file_list_year) != len(li_files_year):
                 logger.warning(
                     f"Mismatch in file counts for {year}. Precip: {len(precip_file_list_year)}, LI: {len(li_files_year)}. Skipping year."
                 )
@@ -208,9 +252,12 @@ def main():
 
         # --- 3a. DETECTION PHASE ---
         if RUN_DETECTION:
-            logger.info(
-                f"Running detection for {len(precip_file_list_year)} files in {year}..."
-            )
+            # Configure logging for detection
+            setup_logging(detection_output_path, filename="detection.log", mode=log_modes["detection"])
+            log_modes["detection"] = "a" 
+            
+            logger.info(f"Running detection for {len(precip_file_list_year)} files in {year}...")
+
             if USE_MULTIPROCESSING:
                 with concurrent.futures.ProcessPoolExecutor(
                     max_workers=NUMBER_OF_CORES
@@ -263,23 +310,20 @@ def main():
             logger.info(f"Detection for year {year} finished.")
             print(f"Detection for year {year} finished.")
 
-            if not logging_switched_to_tracking:
-                # Use mode 'w' to create a fresh tracking log
-                setup_logging(raw_tracking_output_dir, filename="tracking.log", mode="w")
-                logger.info(
-                    "Log file switched to tracking phase for all subsequent years."
-                )
-                logging_switched_to_tracking = True
-
+        # --- 3b. & 3c. TRACKING PHASE ---
         if RUN_TRACKING:
-            # --- 3b. LOADING PHASE ---
+            # Configure logging for tracking
+            setup_logging(raw_tracking_output_dir, filename="tracking.log", mode=log_modes["tracking"])
+            log_modes["tracking"] = "a"
+            
             logger.info(f"Loading all detection files for year {year}...")
+
             year_detection_dir = os.path.join(detection_output_path, str(year))
             detection_results = load_individual_detection_files(
                 year_detection_dir, USE_LIFTED_INDEX
             )
 
-            # --- Apply month filter if specified, especially for 'detection: False' runs ---
+            # Apply month filter if specified
             if months_to_process and detection_results:
                 original_count = len(detection_results)
                 detection_results = [
@@ -297,7 +341,7 @@ def main():
                 )
                 continue
 
-            # --- 3c. TRACKING PHASE ---
+            # Tracking Phase
             logger.info(f"Starting tracking for year {year}...")
             (
                 robust_mcs_id,
@@ -322,7 +366,7 @@ def main():
             logger.info(f"Tracking for year {year} finished.")
             print(f"Tracking for year {year} finished.")
 
-            # --- 3d. SAVING TRACKING PHASE ---
+            # Saving Phase
             logger.info(f"Saving individual hourly tracking files for year {year}...")
             for i in range(len(time_list)):
                 # Package all data for this single timestep into a dictionary
@@ -348,16 +392,12 @@ def main():
 
         # --- 3e. POST-PROCESSING PHASE ---
         if RUN_POSTPROCESSING:
-            if not logging_switched_to_postprocessing:
-                # Ensure directory exists
-                os.makedirs(tracking_output_dir, exist_ok=True)
-                
-                # Switch logger to postprocessing.log
-                # mode='w' ensures we start fresh on the first pass
-                setup_logging(tracking_output_dir, filename="postprocessing.log", mode="w")
-                
-                logger.info("Logging initialized for POST-PROCESSING phase.")
-                logging_switched_to_postprocessing = True
+            # Configure logging for post-processing
+            os.makedirs(tracking_output_dir, exist_ok=True)
+            setup_logging(tracking_output_dir, filename="postprocessing.log", mode=log_modes["postprocessing"])
+            log_modes["postprocessing"] = "a"
+            
+            logger.info("Logging initialized for POST-PROCESSING phase.")
             try:
                 run_postprocessing_year(
                     year,
@@ -371,7 +411,7 @@ def main():
 
         logger.info(f"--- Finished processing for year: {year} ---")
 
-        logger.info("All processing completed successfully.")
+    logger.info("All processing completed successfully.")
     print("All processing completed successfully.")
 
 
