@@ -20,6 +20,8 @@ years: []
 months: [5, 6, 7, 8, 9]
 
 # Detection parameter
+detection: True
+use_lifted_index: True
 min_size_threshold: 10  # min number of grid cells for an object to be detected
 heavy_precip_threshold: 6.82  # mm/h
 moderate_precip_threshold: 1.0
@@ -27,6 +29,7 @@ min_nr_plumes: 1  # number of heavy precipitation plums
 lifted_index_percentage_threshold: 0.2  # mm/h
 
 # Tracking parameter
+tracking: True
 main_lifetime_thresh: 4  # min number of hours for an MCS in the mature state
 main_area_thresh: 5000  # min area for a system to be in the mature state
 grid_cell_area_km2: 121  # area in km2
@@ -34,14 +37,12 @@ nmaxmerge: 5  # maximum number of objects to merge in a single timestep
 
 # Post-processing / Filtering
 # This section controls the physics-based filtering logic
-run_postprocessing: True
+postprocessing: True
 postprocessing_filters:
   lifted_index_threshold: 0.0          # Keep systems with mean LI < 0.0 K
   track_straightness_threshold: 0.4    # Keep systems with straightness > 0.4
   max_area_volatility: 120000.0        # Keep systems with max volatility < 1.2e5
 
 # Other parameter
-use_lifted_index: True
-detection: True
 use_multiprocessing: True
 number_of_cores: 30

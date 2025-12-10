@@ -119,15 +119,16 @@ def main():
     # Operational parameters
     USE_MULTIPROCESSING = config.get("use_multiprocessing", False)
     NUMBER_OF_CORES = config.get("number_of_cores", 1)
-    DO_DETECTION = config.get("detection", True)
+    RUN_DETECTION = config.get("detection", True)
     USE_LIFTED_INDEX = config.get("use_lifted_index", True)
-    RUN_POSTPROCESSING = config.get("run_postprocessing", True)
+    RUN_TRACKING = config.get("tracking", True)
+    RUN_POSTPROCESSING = config.get("postprocessing", True)
 
     # Setup logging and create output directories
     os.makedirs(detection_output_path, exist_ok=True)
     os.makedirs(raw_tracking_output_dir, exist_ok=True)
 
-    if DO_DETECTION:
+    if RUN_DETECTION:
         # Start with a fresh detection log, overwriting any from a previous run.
         setup_logging(detection_output_path, filename="detection.log", mode="w")
         logger.info("Logging initialized for DETECTION phase.")
@@ -205,7 +206,7 @@ def main():
             lifted_index_data_var = None
 
         # --- 3a. DETECTION PHASE ---
-        if DO_DETECTION:
+        if RUN_DETECTION:
             logger.info(
                 f"Running detection for {len(precip_file_list_year)} files in {year}..."
             )
@@ -269,78 +270,80 @@ def main():
                 )
                 logging_switched_to_tracking = True
 
-        # --- 3b. LOADING PHASE ---
-        logger.info(f"Loading all detection files for year {year}...")
-        year_detection_dir = os.path.join(detection_output_path, str(year))
-        detection_results = load_individual_detection_files(
-            year_detection_dir, USE_LIFTED_INDEX
-        )
-
-        # --- Apply month filter if specified, especially for 'detection: False' runs ---
-        if months_to_process and detection_results:
-            original_count = len(detection_results)
-            detection_results = [
-                res
-                for res in detection_results
-                if pd.to_datetime(res["time"]).month in months_to_process
-            ]
-            logger.info(
-                f"Filtered detection results for specified months. Kept {len(detection_results)} of {original_count} files."
+        if RUN_TRACKING:
+            # --- 3b. LOADING PHASE ---
+            logger.info(f"Loading all detection files for year {year}...")
+            year_detection_dir = os.path.join(detection_output_path, str(year))
+            detection_results = load_individual_detection_files(
+                year_detection_dir, USE_LIFTED_INDEX
             )
 
-        if not detection_results:
-            logger.warning(
-                f"No detection results found for year {year} (or for the specified months). Skipping tracking."
+            # --- Apply month filter if specified, especially for 'detection: False' runs ---
+            if months_to_process and detection_results:
+                original_count = len(detection_results)
+                detection_results = [
+                    res
+                    for res in detection_results
+                    if pd.to_datetime(res["time"]).month in months_to_process
+                ]
+                logger.info(
+                    f"Filtered detection results for specified months. Kept {len(detection_results)} of {original_count} files."
+                )
+
+            if not detection_results:
+                logger.warning(
+                    f"No detection results found for year {year} (or for the specified months). Skipping tracking."
+                )
+                continue
+
+            # --- 3c. TRACKING PHASE ---
+            logger.info(f"Starting tracking for year {year}...")
+            (
+                robust_mcs_id,
+                mcs_id,
+                mcs_id_merge_split,
+                lifetime_list,
+                time_list,
+                lat2d,
+                lon2d,
+                lat,
+                lon,
+                merging_events,
+                splitting_events,
+                tracking_centers_list,
+            ) = track_mcs(
+                detection_results,
+                main_lifetime_thresh,
+                main_area_thresh,
+                nmaxmerge,
+                use_li_filter=USE_LIFTED_INDEX,
             )
-            continue
+            logger.info(f"Tracking for year {year} finished.")
+            print(f"Tracking for year {year} finished.")
 
-        # --- 3c. TRACKING PHASE ---
-        logger.info(f"Starting tracking for year {year}...")
-        (
-            robust_mcs_id,
-            mcs_id,
-            mcs_id_merge_split,
-            lifetime_list,
-            time_list,
-            lat2d,
-            lon2d,
-            lat,
-            lon,
-            merging_events,
-            splitting_events,
-            tracking_centers_list,
-        ) = track_mcs(
-            detection_results,
-            main_lifetime_thresh,
-            main_area_thresh,
-            nmaxmerge,
-            use_li_filter=USE_LIFTED_INDEX,
-        )
-        logger.info(f"Tracking for year {year} finished.")
-        print(f"Tracking for year {year} finished.")
+            # --- 3d. SAVING TRACKING PHASE ---
+            logger.info(f"Saving individual hourly tracking files for year {year}...")
+            for i in range(len(time_list)):
+                # Package all data for this single timestep into a dictionary
+                tracking_data_for_timestep = {
+                    "robust_mcs_id": robust_mcs_id[i],
+                    "mcs_id": mcs_id[i],
+                    "mcs_id_merge_split": mcs_id_merge_split[i],
+                    "lifetime": lifetime_list[i],
+                    "time": time_list[i],
+                    "lat2d": lat2d,
+                    "lon2d": lon2d,
+                    "lat": lat,
+                    "lon": lon,
+                    "tracking_centers": tracking_centers_list[i],
+                }
+                save_tracking_result(
+                    tracking_data_for_timestep, raw_tracking_output_dir, data_source, config
+                )
 
-        # --- 3d. SAVING TRACKING PHASE ---
-        logger.info(f"Saving individual hourly tracking files for year {year}...")
-        for i in range(len(time_list)):
-            # Package all data for this single timestep into a dictionary
-            tracking_data_for_timestep = {
-                "robust_mcs_id": robust_mcs_id[i],
-                "mcs_id": mcs_id[i],
-                "mcs_id_merge_split": mcs_id_merge_split[i],
-                "lifetime": lifetime_list[i],
-                "time": time_list[i],
-                "lat2d": lat2d,
-                "lon2d": lon2d,
-                "lat": lat,
-                "lon": lon,
-                "tracking_centers": tracking_centers_list[i],
-            }
-            save_tracking_result(
-                tracking_data_for_timestep, raw_tracking_output_dir, data_source, config
-            )
+            logger.info(f"--- Finished tracking for year: {year} ---")
+            print(f"--- Finished tracking for year: {year} ---")
 
-        logger.info(f"--- Finished tracking for year: {year} ---")
-        print(f"--- Finished tracking for year: {year} ---")
 
         # --- 3e. POST-PROCESSING PHASE ---
         if RUN_POSTPROCESSING:
