@@ -10,11 +10,12 @@ import sys
 import logging
 from collections import defaultdict
 
+
 def get_dataset_encoding(ds):
     """
     Centralized encoding logic for all EMMA output files.
     Ensures consistency across detection, tracking, and post-processing.
-    
+
     Fixes for ncview:
     1. 1D Coordinates (lat, lon, time) are UNCOMPRESSED (zlib=False).
     2. Data variables are COMPRESSED (zlib=True).
@@ -22,19 +23,19 @@ def get_dataset_encoding(ds):
     4. Masks use _FillValue = -1 so 0 is visible as background.
     """
     encoding = {}
-    
+
     # --- 1. Coordinate Encoding (Uncompressed, No Fill Value) ---
     coord_encoding = {"_FillValue": None, "zlib": False, "dtype": "float32"}
-    
+
     # Standardize Time Epoch
     time_encoding = {
-        "_FillValue": None, 
-        "zlib": False, 
+        "_FillValue": None,
+        "zlib": False,
         "dtype": "float64",
         "units": "days since 1950-01-01 00:00:00",
-        "calendar": "standard"
+        "calendar": "standard",
     }
-    
+
     # --- 2. Data Encoding (Compressed) ---
     int_encoding = {
         "zlib": True,
@@ -47,40 +48,52 @@ def get_dataset_encoding(ds):
     byte_encoding = {"dtype": "int8"}
 
     # Apply Rules based on Variable Existence
-    if "time" in ds: encoding["time"] = time_encoding
-    
+    if "time" in ds:
+        encoding["time"] = time_encoding
+
     # 1D Coordinates
     for c in ["lat", "lon", "rlat", "rlon"]:
-        if c in ds: encoding[c] = coord_encoding
-        
+        if c in ds:
+            encoding[c] = coord_encoding
+
     # 2D Coordinates (Auxiliary) -> Compressed to save space
     for c in ["latitude", "longitude"]:
-        if c in ds: encoding[c] = float_encoding
-        
+        if c in ds:
+            encoding[c] = float_encoding
+
     # Rotated Pole Container
-    if "rotated_pole" in ds: encoding["rotated_pole"] = {"dtype": "int32"}
-    
+    if "rotated_pole" in ds:
+        encoding["rotated_pole"] = {"dtype": "int32"}
+
     # Gridded Data Variables
     grid_vars = [
-        "final_labeled_regions", 
-        "lifted_index_regions", 
-        "robust_mcs_id", 
-        "mcs_id", 
-        "mcs_id_merge_split"
+        "final_labeled_regions",
+        "lifted_index_regions",
+        "robust_mcs_id",
+        "mcs_id",
+        "mcs_id_merge_split",
     ]
     for v in grid_vars:
-        if v in ds: encoding[v] = int_encoding
-        
+        if v in ds:
+            encoding[v] = int_encoding
+
     # Tabular (Track) Variables
-    if "label_id" in ds: encoding["label_id"] = {"dtype": "int32"}
-    if "label_lat" in ds: encoding["label_lat"] = float_encoding
-    if "label_lon" in ds: encoding["label_lon"] = float_encoding
-    
-    if "active_track_id" in ds: encoding["active_track_id"] = {"dtype": "int32"}
-    if "active_track_lat" in ds: encoding["active_track_lat"] = float_encoding
-    if "active_track_lon" in ds: encoding["active_track_lon"] = float_encoding
-    if "active_track_touches_boundary" in ds: encoding["active_track_touches_boundary"] = byte_encoding
-    
+    if "label_id" in ds:
+        encoding["label_id"] = {"dtype": "int32"}
+    if "label_lat" in ds:
+        encoding["label_lat"] = float_encoding
+    if "label_lon" in ds:
+        encoding["label_lon"] = float_encoding
+
+    if "active_track_id" in ds:
+        encoding["active_track_id"] = {"dtype": "int32"}
+    if "active_track_lat" in ds:
+        encoding["active_track_lat"] = float_encoding
+    if "active_track_lon" in ds:
+        encoding["active_track_lon"] = float_encoding
+    if "active_track_touches_boundary" in ds:
+        encoding["active_track_touches_boundary"] = byte_encoding
+
     return encoding
 
 
@@ -91,6 +104,7 @@ def save_dataset_to_netcdf(ds, output_path):
     """
     encoding = get_dataset_encoding(ds)
     ds.to_netcdf(output_path, encoding=encoding)
+
 
 def _is_regular_grid(lat_1d, lon_1d, lat_2d):
     """
@@ -398,49 +412,65 @@ def serialize_center_points(center_points):
     return json.dumps(casted_dict)
 
 
+# emma/input_output.py
+
+# ... existing imports ...
+
+
 def load_individual_detection_files(year_input_dir, use_li_filter):
     """
     Load a sequence of detection result NetCDF files.
-    Handles 'lat'/'lon' (Regular), 'rlat'/'rlon' (CORDEX), or 'y'/'x' (Legacy).
-    Reconstructs the center_points dictionary for the tracking algorithm.
+    Optimized: Loads coordinates only once to save memory.
+
+    Returns:
+        tuple: (detection_results_list, shared_grid_coords)
     """
     detection_results = []
+    shared_coords = None
+
     file_pattern = os.path.join(year_input_dir, "**", "detection_*.nc")
     filepaths = sorted(glob.glob(file_pattern, recursive=True))
 
     if not filepaths:
         print(f"Warning: No detection files found matching {file_pattern}")
-        return []
+        return [], None
 
     for filepath in filepaths:
         try:
             with xr.open_dataset(filepath) as ds:
                 time_val = ds["time"].values[0]
 
-                # Robust Dimension Detection
-                if "rlat" in ds.dims:
-                    lat_dim, lon_dim = "rlat", "rlon"
-                elif "lat" in ds.dims:
-                    lat_dim, lon_dim = "lat", "lon"
-                elif "y" in ds.dims:
-                    lat_dim, lon_dim = "y", "x"
-                else:
-                    lat_dim, lon_dim = ds.dims[1], ds.dims[2]
+                if shared_coords is None:
+                    # Robust Dimension Detection
+                    if "rlat" in ds.dims:
+                        lat_dim, lon_dim = "rlat", "rlon"
+                    elif "lat" in ds.dims:
+                        lat_dim, lon_dim = "lat", "lon"
+                    elif "y" in ds.dims:
+                        lat_dim, lon_dim = "y", "x"
+                    else:
+                        lat_dim, lon_dim = ds.dims[1], ds.dims[2]
 
-                lat = ds[lat_dim].values
-                lon = ds[lon_dim].values
+                    lat = ds[lat_dim].values
+                    lon = ds[lon_dim].values
 
-                # Coordinate Reconstruction
-                # If 2D coords exist (CORDEX), use them. If not (Regular), recreate them.
-                if "latitude" in ds.variables:
-                    lat2d = ds["latitude"].values
-                    lon2d = ds["longitude"].values
-                elif "lat" in ds.variables and ds["lat"].ndim == 2:
-                    lat2d = ds["lat"].values
-                    lon2d = ds["lon"].values
-                else:
-                    # Recreate 2D mesh for internal processing if missing (Regular Grid)
-                    lon2d, lat2d = np.meshgrid(lon, lat)
+                    # Coordinate Reconstruction
+                    if "latitude" in ds.variables:
+                        lat2d = ds["latitude"].values
+                        lon2d = ds["longitude"].values
+                    elif "lat" in ds.variables and ds["lat"].ndim == 2:
+                        lat2d = ds["lat"].values
+                        lon2d = ds["lon"].values
+                    else:
+                        # Recreate 2D mesh for internal processing if missing (Regular Grid)
+                        lon2d, lat2d = np.meshgrid(lon, lat)
+
+                    shared_coords = {
+                        "lat": lat,
+                        "lon": lon,
+                        "lat2d": lat2d,
+                        "lon2d": lon2d,
+                    }
 
                 final_labeled_regions = ds["final_labeled_regions"].values[0]
 
@@ -468,13 +498,10 @@ def load_individual_detection_files(year_input_dir, use_li_filter):
                     except:
                         center_points_dict = {}
 
+                # Create lightweight dictionary WITHOUT redundant coords
                 detection_result = {
                     "final_labeled_regions": final_labeled_regions,
                     "time": time_val,
-                    "lat2d": lat2d,
-                    "lon2d": lon2d,
-                    "lat": lat,
-                    "lon": lon,
                     "center_points": center_points_dict,
                 }
 
@@ -495,7 +522,7 @@ def load_individual_detection_files(year_input_dir, use_li_filter):
             continue
 
     detection_results.sort(key=lambda x: x["time"])
-    return detection_results
+    return detection_results, shared_coords
 
 
 def save_detection_result(detection_result, output_dir, data_source):

@@ -2,6 +2,7 @@
 
 import os
 import glob
+import gc
 import concurrent.futures
 import argparse
 import yaml
@@ -114,7 +115,7 @@ def main():
 
     # Tracking parameters
     main_lifetime_thresh = config.get("main_lifetime_thresh", 4)
-    main_area_thresh = config.get("main_area_thresh", 5000)
+    main_area_thresh = config.get("main_area_thresh", 3000)
     nmaxmerge = config.get("nmaxmerge", 5)
 
     # Operational parameters
@@ -319,7 +320,7 @@ def main():
             logger.info(f"Loading all detection files for year {year}...")
 
             year_detection_dir = os.path.join(detection_output_path, str(year))
-            detection_results = load_individual_detection_files(
+            detection_results, grid_coords = load_individual_detection_files(
                 year_detection_dir, USE_LIFTED_INDEX
             )
 
@@ -358,6 +359,7 @@ def main():
                 tracking_centers_list,
             ) = track_mcs(
                 detection_results,
+                grid_coords,
                 main_lifetime_thresh,
                 main_area_thresh,
                 nmaxmerge,
@@ -385,7 +387,12 @@ def main():
                 save_tracking_result(
                     tracking_data_for_timestep, raw_tracking_output_dir, data_source, config
                 )
-
+            
+            del detection_results
+            del mcs_id
+            del robust_mcs_id
+            del lifetime_list
+            gc.collect() # Force garbage collection
             logger.info(f"--- Finished tracking for year: {year} ---")
             print(f"--- Finished tracking for year: {year} ---")
 

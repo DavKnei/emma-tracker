@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 def track_mcs(
     detection_results,
+    grid_coords,
     main_lifetime_thresh,
     main_area_thresh,
     nmaxmerge,
@@ -58,6 +59,7 @@ def track_mcs(
             - "lon2d" (np.ndarray): 2D array of longitudes.
             - "lat" (np.ndarray): 1D array of latitudes.
             - "lon" (np.ndarray): 1D array of longitudes.
+        grid_coords (dict): dictionary containing the grid coordinates: lat, lon, lat2d, lon2d
         main_lifetime_thresh (int): The minimum number of consecutive hours a track must simultaneously meet the area and LI criteria to be considered a main MCS.
         main_area_thresh (float): The minimum area (in km²) a track must have to be considered in its mature phase.
         nmaxmerge (int): The maximum number of parent systems to consider in a single merging event.
@@ -86,8 +88,11 @@ def track_mcs(
     lifetime_list = []
     tracking_centers_list = []
     time_list = []
-    lat = None
-    lon = None
+
+    lat = grid_coords["lat"]
+    lon = grid_coords["lon"]
+    lat2d = grid_coords["lat2d"]
+    lon2d = grid_coords["lon2d"]
 
     lifetime_dict = defaultdict(int)
     max_area_dict = defaultdict(float)
@@ -102,25 +107,18 @@ def track_mcs(
     # Determine if LI filtering is available (only need to check detection_results[0])
     use_li = use_li_filter and ("lifted_index_regions" in detection_results[0])
 
-    grid_area_map_km2 = calculate_grid_area_map(detection_results[0])
+    grid_area_map_km2 = calculate_grid_area_map(grid_coords)
 
     for idx, detection_result in enumerate(detection_results):
         final_labeled_regions = detection_result["final_labeled_regions"]
         center_points_dict = detection_result.get("center_points", {})
         current_time = detection_result["time"]
-        current_lat = detection_result["lat2d"]
-        current_lon = detection_result["lon2d"]
 
         # Get LI regions if available.
         if use_li:
             li_regions = detection_result["lifted_index_regions"]
         else:
             li_regions = None
-
-        # Set spatial coordinates on first timestep.
-        if lat is None:
-            lat = current_lat
-            lon = current_lon
 
         # Initialize ID and lifetime arrays for current timestep.
         mcs_id = np.zeros_like(final_labeled_regions, dtype=np.int32)
@@ -316,7 +314,7 @@ def track_mcs(
         for tid, label_list in label_by_cluster.items():
             center_latlon = (None, None)
             for detect_label in label_list:
-                detect_label_str = str(detect_label)
+                detect_label_str = str(int(detect_label))
                 if detect_label_str in center_points_dict:
                     center_latlon = center_points_dict[detect_label_str]
                     break
@@ -416,10 +414,10 @@ def track_mcs(
         mcs_id_merge_split,
         lifetime_list,
         time_list,
-        detection_result["lat2d"],
-        detection_result["lon2d"],
-        detection_result["lat"],
-        detection_result["lon"],
+        lat2d,
+        lon2d,
+        lat,
+        lon,
         merging_events,
         splitting_events,
         tracking_centers_list,
