@@ -6,7 +6,7 @@ lifted_index_data_directory: "./tests/test_data/"
 file_suffix: ".nc_test"
 detection_output_path: "./tests/output/detection"
 raw_tracking_output_dir: "./tests/output/tracking_raw"
-filtered_tracking_output_dir: ./tests/output/tracking"
+filtered_tracking_output_dir: "./tests/output/tracking"
 
 precip_var_name: "pr"
 liting_index_var_name: "li"
@@ -19,7 +19,8 @@ data_source: "Test data"
 years: []
 months: []
 
-# Detection parametersS
+# Detection parameters
+detection: True
 min_size_threshold: 10
 heavy_precip_threshold: 10.0
 moderate_precip_threshold: 1.0
@@ -27,11 +28,12 @@ min_nr_plumes: 1
 lifted_index_percentage_threshold: 0.2
 
 # Tracking parameters
+tracking: True
 main_lifetime_thresh: 4
 main_area_thresh: 25000
 nmaxmerge: 5
 
-run_postprocessing: False  # default for test
+postprocessing: False  # default for test
 postprocessing_filters:
   lifted_index_threshold: 0.0          # Keep systems with mean LI < 0.0 K
   track_straightness_threshold: 0.4    # Keep systems with straightness > 0.4
@@ -39,6 +41,5 @@ postprocessing_filters:
 
 # Other parameters
 use_lifted_index:  True
-detection: True
 use_multiprocessing: False
 number_of_cores: 24
